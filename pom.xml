@@ -1,0 +1,289 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>io.github.bmarwell.keyserver</groupId>
+  <artifactId>keyserver</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <packaging>pom</packaging>
+
+  <name>Java Keyserver</name>
+  <description>A Java implementation for PGP/GnuPG key servers</description>
+
+  <inceptionYear>2023</inceptionYear>
+
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <comments>Apache-2.0</comments>
+    </license>
+  </licenses>
+
+  <modules>
+    <module>common</module>
+    <module>web</module>
+  </modules>
+
+  <properties>
+    <java.version>21</java.version>
+    <maven.version>[4.0.0-alpha8,)</maven.version>
+    <maven.compiler.release>${java.version}</maven.compiler.release>
+
+    <!-- 3rd party dependencies -->
+    <immutables-value.version>2.10.0</immutables-value.version>
+
+    <!-- plugin dependencies -->
+    <palantir-java-format.version>2.40.0</palantir-java-format.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <!-- 3rd-party -->
+      <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-api</artifactId>
+        <version>2.0.11</version>
+      </dependency>
+      <dependency>
+        <groupId>dnsjava</groupId>
+        <artifactId>dnsjava</artifactId>
+        <version>3.5.3</version>
+      </dependency>
+      <dependency>
+        <groupId>org.immutables</groupId>
+        <artifactId>bom</artifactId>
+        <version>${immutables-value.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+
+      <!-- test dependencies -->
+      <dependency>
+        <groupId>org.junit</groupId>
+        <artifactId>junit-bom</artifactId>
+        <version>5.10.1</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.assertj</groupId>
+        <artifactId>assertj-bom</artifactId>
+        <version>3.25.2</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.awaitility</groupId>
+        <artifactId>awaitility</artifactId>
+        <version>4.2.0</version>
+      </dependency>
+
+      <!-- plugin-only to be found by dependabot/renovate -->
+      <dependency>
+        <groupId>com.palantir.javaformat</groupId>
+        <artifactId>palantir-java-format</artifactId>
+        <version>${palantir-java-format.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <!-- forced dependencies -->
+  <dependencies>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter-engine</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <!-- Maven core plugins -->
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-clean-plugin</artifactId>
+          <version>3.3.2</version>
+        </plugin>
+
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>3.12.1</version>
+        </plugin>
+
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-enforcer-plugin</artifactId>
+          <version>3.4.1</version>
+        </plugin>
+
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-failsafe-plugin</artifactId>
+          <version>3.2.5</version>
+        </plugin>
+
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-install-plugin</artifactId>
+          <version>3.1.1</version>
+        </plugin>
+
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-jar-plugin</artifactId>
+          <version>3.3.0</version>
+        </plugin>
+
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-resources-plugin</artifactId>
+          <version>3.3.1</version>
+        </plugin>
+
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>3.2.5</version>
+        </plugin>
+
+        <!-- 3rd party -->
+        <plugin>
+          <groupId>org.jacoco</groupId>
+          <artifactId>jacoco-maven-plugin</artifactId>
+          <version>0.8.11</version>
+        </plugin>
+        <plugin>
+          <groupId>com.diffplug.spotless</groupId>
+          <artifactId>spotless-maven-plugin</artifactId>
+          <version>2.43.0</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+
+    <!-- forced execution -->
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration combine.children="append">
+          <annotationProcessorPaths />
+          <compilerArgs>
+            <arg>-Xlint:all,-processing,-classfile</arg>
+          </compilerArgs>
+        </configuration>
+        <executions>
+          <execution>
+            <id>default-process-annotations</id>
+            <goals>
+              <goal>compile</goal>
+            </goals>
+            <phase>generate-sources</phase>
+            <configuration>
+              <proc>only</proc>
+            </configuration>
+          </execution>
+          <execution>
+            <id>default-compiler</id>
+            <configuration>
+              <proc>none</proc>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>enforce-java</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <requireJavaVersion>
+                  <version>${java.version}</version>
+                </requireJavaVersion>
+                <requireMavenVersion>
+                  <version>${maven.version}</version>
+                </requireMavenVersion>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <goals>
+              <goal>prepare-agent</goal>
+              <goal>report</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>com.diffplug.spotless</groupId>
+        <artifactId>spotless-maven-plugin</artifactId>
+        <configuration>
+          <encoding>UTF-8</encoding>
+
+          <java>
+            <importOrder />
+            <removeUnusedImports />
+            <formatAnnotations />
+
+            <licenseHeader>
+              <file>${maven.multiModuleProjectDirectory}/build/apache-2.0-license-header.txt</file>
+            </licenseHeader>
+
+            <palantirJavaFormat>
+              <version>${palantir-java-format.version}</version>
+              <style>PALANTIR</style>
+            </palantirJavaFormat>
+          </java>
+
+          <pom>
+            <sortPom>
+              <lineSeparator>\n</lineSeparator>
+              <expandEmptyElements>false</expandEmptyElements>
+              <spaceBeforeCloseEmptyElement>true</spaceBeforeCloseEmptyElement>
+              <keepBlankLines>true</keepBlankLines>
+              <nrOfIndentSpace>2</nrOfIndentSpace>
+              <indentBlankLines>false</indentBlankLines>
+              <predefinedSortOrder>recommended_2008_06</predefinedSortOrder>
+            </sortPom>
+          </pom>
+        </configuration>
+        <executions>
+          <execution>
+            <id>default-apply</id>
+            <goals>
+              <goal>apply</goal>
+            </goals>
+            <phase>validate</phase>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+</project>
