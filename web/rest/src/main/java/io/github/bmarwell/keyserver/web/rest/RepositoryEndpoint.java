@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023-$today.year The java-keyserver project team.
+ * Copyright (C) 2023-2024 The java-keyserver project team.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,3 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package io.github.bmarwell.keyserver.web.rest;
+
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.core.Response;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+
+@Tag(name = "Repositories")
+@Path("repo")
+public class RepositoryEndpoint {
+
+    @GET
+    public Response getListOfRepositoryNames() {
+        return Response.status(Response.Status.SERVICE_UNAVAILABLE).build();
+    }
+}

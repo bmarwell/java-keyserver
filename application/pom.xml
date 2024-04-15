@@ -9,14 +9,13 @@
   </parent>
 
   <groupId>io.github.bmarwell.keyserver</groupId>
-  <artifactId>keyserver-web</artifactId>
+  <artifactId>keyserver-application-core</artifactId>
   <version>0.1.0-SNAPSHOT</version>
   <packaging>pom</packaging>
-
-  <name>Java Keyserver :: web</name>
+  <name>Java Keyserver :: application-core</name>
 
   <modules>
-    <module>rest</module>
+    <module>application-api</module>
   </modules>
 
 </project>

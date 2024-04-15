@@ -4,19 +4,14 @@
 
   <parent>
     <groupId>io.github.bmarwell.keyserver</groupId>
-    <artifactId>keyserver</artifactId>
+    <artifactId>keyserver-common</artifactId>
     <version>0.1.0-SNAPSHOT</version>
   </parent>
 
   <groupId>io.github.bmarwell.keyserver</groupId>
-  <artifactId>keyserver-web</artifactId>
+  <artifactId>keyserver-common-ids</artifactId>
   <version>0.1.0-SNAPSHOT</version>
-  <packaging>pom</packaging>
 
-  <name>Java Keyserver :: web</name>
-
-  <modules>
-    <module>rest</module>
-  </modules>
+  <name>Java Keyserver :: common :: ids</name>
 
 </project>

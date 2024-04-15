@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023-$today.year The java-keyserver project team.
+ * Copyright (C) 2023-2024 The java-keyserver project team.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,3 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package io.github.bmarwell.keyserver.common.ids;
+
+/**
+ * A repository name must be unique and is therefore an identifier.
+ */
+public interface RepositoryName {
+    static RepositoryName fromString(String repositoryName) {
+        throw new UnsupportedOperationException("not implemented");
+    }
+}
