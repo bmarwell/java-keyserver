@@ -15,4 +15,8 @@
 
   <name>Java Keyserver :: common</name>
 
+  <modules>
+    <module>ids</module>
+  </modules>
+
 </project>
