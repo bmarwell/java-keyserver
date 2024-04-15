@@ -1,0 +1,29 @@
+= Java Keyserver
+:toc: macro
+
+This is the Java Keyserver project.
+
+image:https://img.shields.io/badge/License-Apache_2.0-blue.svg[License,link=https://opensource.org/licenses/Apache-2.0]
+image:https://img.shields.io/badge/renovate-enabled-brightgreen.svg[Renovate,link=https://renovatebot.com]
+
+
+toc::[]
+
+== Features
+
+=== Multiple key repositories
+
+Unlike typical keyservers, this keyserver supports multiple named "repositories":
+
+* a local keyserver which does not sync, e.g. for company use.
+* an outbound-syncing repository (similar to local, but only syncs outbound).
+* an inbound-syncing repository (only syncs incoming keys).
+  ** type a: sync everything (like most implementations).
+  ** type b: sync only requested keys, like Maven repositories do.
+  ** Supports exclusion rules to not query specific email domains upstream.
+* Groups: Similar to nexus/artifactory, can group repositories for reading.
+
+=== Privacy features
+
+* Will remove keys after a while (configurable).
+* Sends mails for verification (local repositories only).
