@@ -4,7 +4,7 @@
 
   <parent>
     <groupId>io.github.bmarwell.keyserver</groupId>
-    <artifactId>keyserver-application-core</artifactId>
+    <artifactId>keyserver-application</artifactId>
     <version>0.1.0-SNAPSHOT</version>
   </parent>
 

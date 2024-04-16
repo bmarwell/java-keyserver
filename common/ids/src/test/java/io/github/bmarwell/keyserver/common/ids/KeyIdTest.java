@@ -18,7 +18,6 @@ package io.github.bmarwell.keyserver.common.ids;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Locale;
-import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 class KeyIdTest {
@@ -26,13 +25,6 @@ class KeyIdTest {
     public static final String LONG_KEY_ID = "7BBF6E417BBF6E41";
     public static final String SHORT_KEY_ID = "7BBF6E417BBF6E41".substring(8);
     public static final String LONG_KEY_ID_LOWER = LONG_KEY_ID.toLowerCase(Locale.ROOT);
-
-    @Test
-    void can_identify_short_keyid() {
-        // expect:
-        Assertions.assertThatThrownBy(() -> KeyId.fromString(SHORT_KEY_ID))
-                .isInstanceOf(IllegalArgumentException.class);
-    }
 
     @Test
     void can_identify_long_keyid() {

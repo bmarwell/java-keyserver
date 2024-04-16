@@ -13,7 +13,7 @@
   <version>0.1.0-SNAPSHOT</version>
   <packaging>war</packaging>
 
-  <name>Java Keyserver :: rest</name>
+  <name>Java Keyserver :: web :: rest</name>
 
   <dependencies>
     <dependency>
@@ -45,6 +45,22 @@
       <version>0.1.0-SNAPSHOT</version>
       <scope>compile</scope>
     </dependency>
+
+    <dependency>
+      <groupId>io.github.bmarwell.keyserver</groupId>
+      <artifactId>keyserver-application-core</artifactId>
+      <version>0.1.0-SNAPSHOT</version>
+      <scope>runtime</scope>
+    </dependency>
   </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>io.openliberty.tools</groupId>
+        <artifactId>liberty-maven-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
 
 </project>

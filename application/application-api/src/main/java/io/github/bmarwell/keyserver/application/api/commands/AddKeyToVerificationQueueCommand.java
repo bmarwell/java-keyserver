@@ -13,14 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.github.bmarwell.keyserver.application.api;
+package io.github.bmarwell.keyserver.application.api.commands;
 
-import io.github.bmarwell.keyserver.common.ids.KeyId;
 import io.github.bmarwell.keyserver.common.ids.RepositoryName;
+import java.io.InputStream;
 
-/**
- * Key handling core service.
- */
-public interface RepositoryService {
-    void getKeyByRepoAndKeyId(RepositoryName repoName, KeyId keyId);
-}
+public record AddKeyToVerificationQueueCommand(InputStream asciiArmoredKeyRing, RepositoryName repositoryName)
+        implements KeyServerCommand {}

@@ -18,8 +18,9 @@ package io.github.bmarwell.keyserver.common.ids;
 /**
  * A repository name must be unique and is therefore an identifier.
  */
-public interface RepositoryName {
-    static RepositoryName fromString(String repositoryName) {
-        throw new UnsupportedOperationException("not implemented");
+public record RepositoryName(String value) {
+
+    public static RepositoryName fromString(String repositoryName) {
+        return new RepositoryName(repositoryName);
     }
 }
