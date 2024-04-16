@@ -10,7 +10,7 @@
   <name>Java Keyserver</name>
   <description>A Java implementation for PGP/GnuPG key servers</description>
 
-  <inceptionYear>2023</inceptionYear>
+  <inceptionYear>2024</inceptionYear>
 
   <licenses>
     <license>
@@ -23,6 +23,8 @@
   <modules>
     <module>common</module>
     <module>application</module>
+    <module>repository</module>
+    <module>mail</module>
     <module>web</module>
   </modules>
 
@@ -33,6 +35,7 @@
 
     <!-- 3rd party dependencies -->
     <immutables-value.version>2.10.0</immutables-value.version>
+    <bouncycastle.version>1.78</bouncycastle.version>
 
     <!-- plugin dependencies -->
     <palantir-java-format.version>2.40.0</palantir-java-format.version>
@@ -79,6 +82,22 @@
         <version>${immutables-value.version}</version>
         <type>pom</type>
         <scope>import</scope>
+      </dependency>
+
+      <dependency>
+        <groupId>org.bouncycastle</groupId>
+        <artifactId>bcprov-jdk18on</artifactId>
+        <version>${bouncycastle.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.bouncycastle</groupId>
+        <artifactId>bcpg-jdk18on</artifactId>
+        <version>${bouncycastle.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.bouncycastle</groupId>
+        <artifactId>bcutil-jdk18on</artifactId>
+        <version>${bouncycastle.version}</version>
       </dependency>
 
       <!-- test dependencies -->
@@ -202,6 +221,12 @@
           <groupId>com.diffplug.spotless</groupId>
           <artifactId>spotless-maven-plugin</artifactId>
           <version>2.43.0</version>
+        </plugin>
+
+        <plugin>
+          <groupId>io.openliberty.tools</groupId>
+          <artifactId>liberty-maven-plugin</artifactId>
+          <version>3.9</version>
         </plugin>
       </plugins>
     </pluginManagement>

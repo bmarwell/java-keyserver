@@ -15,7 +15,7 @@
  */
 package io.github.bmarwell.keyserver.web.rest;
 
-import io.github.bmarwell.keyserver.application.api.RepositoryService;
+import io.github.bmarwell.keyserver.application.api.KeyRepositoryService;
 import io.github.bmarwell.keyserver.common.ids.KeyId;
 import io.github.bmarwell.keyserver.common.ids.RepositoryName;
 import jakarta.inject.Inject;
@@ -30,7 +30,7 @@ import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 public class KeyEndpoint {
 
     @Inject
-    RepositoryService repositoryService;
+    KeyRepositoryService keyRepositoryService;
 
     @GET
     @Path("{keyid}")
@@ -39,16 +39,16 @@ public class KeyEndpoint {
         final RepositoryName repositoryName = RepositoryName.fromString(repoName);
         final KeyId keyId = KeyId.fromString(keyIdString);
 
-        this.repositoryService.getKeyByRepoAndKeyId(repositoryName, keyId);
+        this.keyRepositoryService.getKeyByRepoAndKeyId(repositoryName, keyId);
 
         return Response.status(Response.Status.SERVICE_UNAVAILABLE).build();
     }
 
-    public RepositoryService getRepositoryService() {
-        return repositoryService;
+    public KeyRepositoryService getRepositoryService() {
+        return keyRepositoryService;
     }
 
-    public void setRepositoryService(RepositoryService repositoryService) {
-        this.repositoryService = repositoryService;
+    public void setRepositoryService(KeyRepositoryService keyRepositoryService) {
+        this.keyRepositoryService = keyRepositoryService;
     }
 }

@@ -18,5 +18,5 @@ package io.github.bmarwell.keyserver.web.rest;
 import jakarta.ws.rs.ApplicationPath;
 import jakarta.ws.rs.core.Application;
 
-@ApplicationPath("api")
+@ApplicationPath("")
 public class KeyserverRestApplication extends Application {}

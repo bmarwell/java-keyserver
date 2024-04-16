@@ -17,6 +17,7 @@
 
   <modules>
     <module>rest</module>
+    <module>openpgp-keyserver-protocol</module>
   </modules>
 
 </project>
