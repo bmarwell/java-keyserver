@@ -50,6 +50,12 @@
       <groupId>org.bouncycastle</groupId>
       <artifactId>bcutil-jdk18on</artifactId>
     </dependency>
+    <dependency>
+      <groupId>io.github.bmarwell.keyserver</groupId>
+      <artifactId>keyserver-test-utils-cdi</artifactId>
+      <version>0.1.0-SNAPSHOT</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
 </project>
