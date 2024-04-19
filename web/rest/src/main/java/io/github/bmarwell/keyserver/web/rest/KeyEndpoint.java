@@ -18,6 +18,7 @@ package io.github.bmarwell.keyserver.web.rest;
 import io.github.bmarwell.keyserver.application.api.KeyRepositoryService;
 import io.github.bmarwell.keyserver.common.ids.KeyId;
 import io.github.bmarwell.keyserver.common.ids.RepositoryName;
+import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
@@ -27,6 +28,7 @@ import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 
 @Tag(name = "Keys")
 @Path("{repo}/key")
+@ApplicationScoped
 public class KeyEndpoint {
 
     @Inject

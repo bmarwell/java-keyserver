@@ -24,6 +24,7 @@ import java.util.Optional;
  * Key handling core service.
  */
 public interface KeyRepositoryService {
+
     void getKeyByRepoAndKeyId(RepositoryName repoName, KeyId keyId);
 
     Optional<PgpPublicKey> getKeyByKeyId(KeyId keyId);

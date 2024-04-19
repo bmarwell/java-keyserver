@@ -16,9 +16,9 @@
 package io.github.bmarwell.keyserver.mail;
 
 import io.github.bmarwell.keyserver.port.mail.MailService;
-import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Default;
 
 @Default
-@Dependent
+@ApplicationScoped
 public class SmtpMailServiceAdapter implements MailService {}

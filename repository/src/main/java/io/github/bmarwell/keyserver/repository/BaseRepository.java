@@ -17,8 +17,8 @@ package io.github.bmarwell.keyserver.repository;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Resource;
+import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 import javax.sql.DataSource;
@@ -30,7 +30,7 @@ public abstract class BaseRepository {
 
     private static final ReentrantLock MIGRATION_LOCK = new ReentrantLock();
 
-    @PersistenceContext(name = "keyserver")
+    @Inject
     private EntityManager entityManager;
 
     @Resource(name = "jdbc/keyserver")

@@ -20,7 +20,7 @@ import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommand;
 import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommandResponse;
 import io.github.bmarwell.keyserver.application.port.repository.KeyVerificationQueueRepository;
 import io.github.bmarwell.keyserver.port.mail.MailService;
-import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
 import java.io.IOException;
 import java.util.Iterator;
@@ -28,7 +28,7 @@ import org.bouncycastle.openpgp.*;
 import org.bouncycastle.openpgp.operator.bc.BcKeyFingerprintCalculator;
 import org.bouncycastle.util.encoders.Hex;
 
-@Dependent
+@RequestScoped
 public class AddKeyToVerificationQueueCommandHandler
         extends AbstractKeyServerCommandHandler<AddKeyToVerificationQueueCommand> {
 
