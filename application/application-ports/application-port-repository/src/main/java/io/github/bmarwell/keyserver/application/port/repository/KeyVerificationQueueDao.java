@@ -13,20 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.github.bmarwell.keyserver.repository;
+package io.github.bmarwell.keyserver.application.port.repository;
 
-import io.github.bmarwell.keyserver.application.port.repository.KeyVerificationQueueRepository;
 import io.github.bmarwell.keyserver.common.ids.PgpPublicKey;
 import io.github.bmarwell.keyserver.common.ids.RepositoryName;
-import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.enterprise.inject.Default;
 
-@Default
-@ApplicationScoped
-public class JpaKeyVerificationQueueRepository extends BaseRepository implements KeyVerificationQueueRepository {
+public interface KeyVerificationQueueDao {
 
-    @Override
-    public void addKeyToRepository(RepositoryName repositoryName, PgpPublicKey publicKey) {
-        throw new UnsupportedOperationException("not implemented");
-    }
+    void addKeyToRepository(RepositoryName repositoryName, PgpPublicKey publicKey);
 }
