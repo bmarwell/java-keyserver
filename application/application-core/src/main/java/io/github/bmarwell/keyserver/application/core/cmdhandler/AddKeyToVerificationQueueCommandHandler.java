@@ -15,10 +15,10 @@
  */
 package io.github.bmarwell.keyserver.application.core.cmdhandler;
 
+import io.github.bmarwell.keyserver.application.api.KeyQueueRepositoryService;
 import io.github.bmarwell.keyserver.application.api.commands.AddKeyToVerificationQueueCommand;
 import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommand;
 import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommandResponse;
-import io.github.bmarwell.keyserver.application.port.repository.KeyVerificationQueueRepository;
 import io.github.bmarwell.keyserver.port.mail.MailService;
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
@@ -33,7 +33,7 @@ public class AddKeyToVerificationQueueCommandHandler
         extends AbstractKeyServerCommandHandler<AddKeyToVerificationQueueCommand> {
 
     @Inject
-    KeyVerificationQueueRepository keyVerificationQueueRepository;
+    KeyQueueRepositoryService keyQueueRepositoryService;
 
     @Inject
     MailService mailService;
@@ -74,7 +74,7 @@ public class AddKeyToVerificationQueueCommandHandler
             throw new RuntimeException(e);
         }
 
-        this.keyVerificationQueueRepository.addKeyToRepository(command.repositoryName(), null);
+        this.keyQueueRepositoryService.addKeyToRepository(command.repositoryName(), null);
         // TODO: when successful, send verification mail
         // TODO: need a verification of all UIDs (mail addresses, if exist)
         // TODO: drop UIDs without mail address
@@ -85,12 +85,12 @@ public class AddKeyToVerificationQueueCommandHandler
         throw new UnsupportedOperationException("not implemented");
     }
 
-    public KeyVerificationQueueRepository getKeyVerificationQueueRepository() {
-        return keyVerificationQueueRepository;
+    public KeyQueueRepositoryService getKeyQueueRepositoryService() {
+        return keyQueueRepositoryService;
     }
 
-    public void setKeyVerificationQueueRepository(KeyVerificationQueueRepository keyVerificationQueueRepository) {
-        this.keyVerificationQueueRepository = keyVerificationQueueRepository;
+    public void setKeyQueueRepositoryService(KeyQueueRepositoryService keyQueueRepositoryService) {
+        this.keyQueueRepositoryService = keyQueueRepositoryService;
     }
 
     public MailService getMailService() {

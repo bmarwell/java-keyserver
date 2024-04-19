@@ -13,19 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.github.bmarwell.keyserver.repository;
+package io.github.bmarwell.keyserver.application.api;
 
-import jakarta.inject.Inject;
-import jakarta.persistence.EntityManager;
+import io.github.bmarwell.keyserver.common.ids.PgpPublicKey;
+import io.github.bmarwell.keyserver.common.ids.RepositoryName;
 
-public abstract class BaseRepository {
+public interface KeyQueueRepositoryService {
 
-    @Inject
-    private EntityManager entityManager;
-
-    public BaseRepository() {}
-
-    public EntityManager getEntityManager() {
-        return entityManager;
-    }
+    void addKeyToRepository(RepositoryName repositoryName, PgpPublicKey publicKey);
 }
