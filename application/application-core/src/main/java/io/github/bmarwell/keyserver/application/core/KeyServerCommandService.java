@@ -18,7 +18,7 @@ package io.github.bmarwell.keyserver.application.core;
 import io.github.bmarwell.keyserver.application.api.CommandService;
 import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommand;
 import io.github.bmarwell.keyserver.application.core.cmdhandler.CommandHandler;
-import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Any;
 import jakarta.enterprise.inject.Default;
 import jakarta.enterprise.inject.Instance;
@@ -27,7 +27,7 @@ import java.io.Serializable;
 import java.util.Optional;
 
 @Default
-@Dependent
+@ApplicationScoped
 public class KeyServerCommandService implements CommandService, Serializable {
 
     @Inject

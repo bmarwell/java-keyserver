@@ -13,20 +13,31 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.github.bmarwell.keyserver.repository;
+package io.github.bmarwell.keyserver.repository.tools;
 
-import io.github.bmarwell.keyserver.application.port.repository.KeyVerificationQueueRepository;
-import io.github.bmarwell.keyserver.common.ids.PgpPublicKey;
-import io.github.bmarwell.keyserver.common.ids.RepositoryName;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.context.RequestScoped;
 import jakarta.enterprise.inject.Default;
+import jakarta.enterprise.inject.Disposes;
+import jakarta.enterprise.inject.Produces;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.EntityManagerFactory;
+import jakarta.persistence.PersistenceContext;
 
-@Default
 @ApplicationScoped
-public class JpaKeyVerificationQueueRepository extends BaseRepository implements KeyVerificationQueueRepository {
+public class EntityManagerProducer {
 
-    @Override
-    public void addKeyToRepository(RepositoryName repositoryName, PgpPublicKey publicKey) {
-        throw new UnsupportedOperationException("not implemented");
+    @PersistenceContext(name = "keyserver")
+    private EntityManagerFactory entityManagerFactory;
+
+    @Produces
+    @Default
+    @RequestScoped
+    public EntityManager createEntityManager() {
+        return entityManagerFactory.createEntityManager();
+    }
+
+    public void dispose(@Disposes @Default EntityManager entityManager) {
+        entityManager.close();
     }
 }

@@ -19,13 +19,13 @@ import io.github.bmarwell.keyserver.application.api.KeyRepositoryService;
 import io.github.bmarwell.keyserver.common.ids.KeyId;
 import io.github.bmarwell.keyserver.common.ids.PgpPublicKey;
 import io.github.bmarwell.keyserver.common.ids.RepositoryName;
-import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Default;
 import java.io.Serializable;
 import java.util.Optional;
 
 @Default
-@Dependent
+@ApplicationScoped
 public class PersistentKeyRepositoryService implements KeyRepositoryService, Serializable {
     @Override
     public void getKeyByRepoAndKeyId(RepositoryName repoName, KeyId keyId) {
