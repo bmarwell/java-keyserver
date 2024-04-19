@@ -31,8 +31,9 @@
 
   <properties>
     <java.version>21</java.version>
-    <maven.version>[4.0.0-alpha8,)</maven.version>
+    <maven.version>[3.9.6,)</maven.version>
     <maven.compiler.release>${java.version}</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
     <!-- 3rd party dependencies -->
     <immutables-value.version>2.10.0</immutables-value.version>
@@ -40,6 +41,7 @@
 
     <!-- plugin dependencies -->
     <palantir-java-format.version>2.40.0</palantir-java-format.version>
+    <flyway.version>10.11.0</flyway.version>
   </properties>
 
   <dependencyManagement>
@@ -54,6 +56,12 @@
       <dependency>
         <groupId>jakarta.ws.rs</groupId>
         <artifactId>jakarta.ws.rs-api</artifactId>
+        <version>3.1.0</version>
+        <scope>provided</scope>
+      </dependency>
+      <dependency>
+        <groupId>jakarta.persistence</groupId>
+        <artifactId>jakarta.persistence-api</artifactId>
         <version>3.1.0</version>
         <scope>provided</scope>
       </dependency>
@@ -73,16 +81,21 @@
         <version>2.0.11</version>
       </dependency>
       <dependency>
-        <groupId>dnsjava</groupId>
-        <artifactId>dnsjava</artifactId>
-        <version>3.5.3</version>
+        <groupId>ch.qos.logback</groupId>
+        <artifactId>logback-classic</artifactId>
+        <version>1.5.6</version>
+        <scope>test</scope>
       </dependency>
       <dependency>
-        <groupId>org.immutables</groupId>
-        <artifactId>bom</artifactId>
-        <version>${immutables-value.version}</version>
-        <type>pom</type>
-        <scope>import</scope>
+        <groupId>org.flywaydb</groupId>
+        <artifactId>flyway-core</artifactId>
+        <version>${flyway.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.flywaydb</groupId>
+        <artifactId>flyway-database-postgresql</artifactId>
+        <version>${flyway.version}</version>
+        <scope>runtime</scope>
       </dependency>
 
       <dependency>

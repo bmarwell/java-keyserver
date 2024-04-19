@@ -1,9 +1,38 @@
 <server>
   <featureManager>
+    <feature>servlet-6.0</feature>
     <feature>restfulWs-3.1</feature>
     <feature>cdi-4.0</feature>
     <feature>mpOpenAPI-3.1</feature>
+    <feature>persistence-3.1</feature>
+    <feature>localconnector-1.0</feature>
   </featureManager>
 
   <cdi enableImplicitBeanArchives="false" />
+
+  <variable name="env.KEYSERVER_DB_NAME" defaultValue="postgres" />
+  <variable name="env.KEYSERVER_DB_USER" defaultValue="postgres" />
+  <variable name="env.KEYSERVER_DB_SERVER" defaultValue="localhost" />
+
+  <variable name="db_name" value="${env.KEYSERVER_DB_NAME}" />
+  <variable name="db_server" value="${env.KEYSERVER_DB_SERVER}" />
+  <variable name="db_user" value="${env.KEYSERVER_DB_USER}" />
+  <variable name="db_password" value="${env.KEYSERVER_DB_PASSWORD}" />
+
+
+  <!-- Derby Library Configuration -->
+  <library id="pgsqldriver">
+    <fileset dir="${server.config.dir}/lib/global" includes="postgresql-*.jar" />
+  </library>
+
+  <!-- Datasource Configuration -->
+  <dataSource id="keyserver" jndiName="jdbc/keyserver">
+    <jdbcDriver libraryRef="pgsqldriver" />
+    <properties.postgresql
+      databaseName="${db_name}"
+      serverName="${db_server}"
+      user="${db_user}"
+      password="${db_password}"
+    />
+  </dataSource>
 </server>
