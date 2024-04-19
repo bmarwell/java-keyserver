@@ -23,7 +23,8 @@ import jakarta.enterprise.inject.Default;
 
 @Default
 @Dependent
-public class JpaKeyVerificationQueueRepository implements KeyVerificationQueueRepository {
+public class JpaKeyVerificationQueueRepository extends BaseRepository implements KeyVerificationQueueRepository {
+
     @Override
     public void addKeyToRepository(RepositoryName repositoryName, PgpPublicKey publicKey) {
         throw new UnsupportedOperationException("not implemented");
