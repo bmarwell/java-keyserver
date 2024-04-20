@@ -2,30 +2,82 @@
 :toc: macro
 
 This is the Java Keyserver project.
+It supports multiple modes of operation and requires a PostgreSQL database.
 
 image:https://github.com/bmarwell/java-keyserver/actions/workflows/ci.yml/badge.svg[Maven CI,link=https://github.com/bmarwell/java-keyserver/actions/workflows/ci.yml]
 image:https://img.shields.io/badge/License-Apache_2.0-blue.svg[License,link=https://opensource.org/licenses/Apache-2.0]
 image:https://codecov.io/gh/bmarwell/java-keyserver/graph/badge.svg?token=YE6G1L652A[codecov.io,link=https://codecov.io/gh/bmarwell/java-keyserver]
 image:https://img.shields.io/badge/renovate-enabled-brightgreen.svg[Renovate,link=https://renovatebot.com]
-
+image:https://img.shields.io/badge/AppServer-Open%20Liberty-blue[AppServer,link=https://openliberty.io/]
 
 toc::[]
 
-== Features
+== State of this project
 
-=== Multiple key repositories
+This is in development.
+None of the listed features works as of now.
 
-Unlike typical keyservers, this keyserver supports multiple named "repositories":
+== Planned features
 
-* a local keyserver which does not sync, e.g. for company use.
-* an outbound-syncing repository (similar to local, but only syncs outbound).
-* an inbound-syncing repository (only syncs incoming keys).
-  ** type a: sync everything (like most implementations).
-  ** type b: sync only requested keys, like Maven repositories do.
-  ** Supports exclusion rules to not query specific email domains upstream.
-* Groups: Similar to nexus/artifactory, can group repositories for reading.
+=== Modern Rest API
+
+* [ ] Implemented
+
+=== Multiple operation modes
+
+Unlike typical key servers, this keyserver supports multiple modes of operation:
+
+Local::
+* [ ] Implemented +
+A local keyserver which does not sync, e.g. for company use.
+
+Syncing::
+* [ ] Implemented +
+An outbound-syncing repository (similar to local, but only syncs outbound).
+
+Mirror::
+* [ ] Implemented +
+An inbound-syncing repository (only syncs incoming keys). +
++
+** Type a: sync everything (like most implementations).
+** Type b: sync only requested keys, like most Maven repository mirrors do.
+** Supports exclusion rules to not query specific email domains upstream.
+
+Grouping::
+* [ ] Implemented +
+Similar to nexus/artifactory groups, can group other upstream key servers for reading.
 
 === Privacy features
 
-* Will remove keys after a while (configurable).
-* Sends mails for verification (local repositories only).
+* [ ] Will remove keys after a while (configurable).
+* [ ] Sends mails to UIDs for verification (local repositories only) before they go public.
+* [ ] Removes signatures which are invalid for longer than one year.
+* [ ] Removes revoked/invalid keys after one year unless re-uploaded.
+
+=== Configuration options
+
+* [ ] Mode of operation.
+* [ ] Proxy support.
+* [ ] Exclusion rules for mirroring.
+* [ ] Exclusion rules for syncing.
+
+
+== Running the project
+
+Prerequisites::
+** Java 21 or higher
+** A recent PostgreSQL database (see below)
+** Apache Maven is included via the wrapper.
+
+.Run PostgreSQL database using containers
+[source,bash]
+----
+# or docker...
+podman run --name keyserver-db --rm -e POSTGRES_PASSWORD=test1234   -p 5432:5432 postgres
+----
+
+.Run the pks endpoint application
+[source,bash]
+----
+KEYSERVER_DB_PASSWORD=test1234 mvn package -pl web/openpgp-keyserver-protocol -am liberty:dev
+----
