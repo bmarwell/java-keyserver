@@ -13,6 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.github.bmarwell.keyserver.common.ids;
+package io.github.bmarwell.keyserver.application.core;
 
-public record PgpPublicKey(KeyFingerprint keyFingerprint, java.time.Instant ctime, java.time.Instant expiry) {}
+import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommandResponse;
+import io.github.bmarwell.keyserver.common.ids.PgpPublicKey;
+
+public record AddKeyToVerificationQueueResponse(PgpPublicKey submittedKey) implements KeyServerCommandResponse {}
