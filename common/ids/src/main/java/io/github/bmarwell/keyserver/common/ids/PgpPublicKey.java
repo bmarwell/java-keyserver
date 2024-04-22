@@ -15,7 +15,4 @@
  */
 package io.github.bmarwell.keyserver.common.ids;
 
-public interface PgpPublicKey {
-
-    String fingerprint();
-}
+public record PgpPublicKey(KeyFingerprint keyFingerprint) {}

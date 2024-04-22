@@ -18,6 +18,8 @@ package io.github.bmarwell.keyserver.repository;
 import io.github.bmarwell.keyserver.application.port.repository.KeyVerificationQueueDao;
 import io.github.bmarwell.keyserver.common.ids.PgpPublicKey;
 import io.github.bmarwell.keyserver.common.ids.RepositoryName;
+import io.github.bmarwell.keyserver.repository.pdo.PublicKeyQueuePdo;
+import io.github.bmarwell.keyserver.repository.pdo.ReversedKeyFingerprint;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Default;
 
@@ -26,7 +28,21 @@ import jakarta.enterprise.inject.Default;
 public class JpaKeyVerificationQueueDao extends BaseRepository implements KeyVerificationQueueDao {
 
     @Override
-    public void addKeyToRepository(RepositoryName repositoryName, PgpPublicKey publicKey) {
-        throw new UnsupportedOperationException("not implemented");
+    public PgpPublicKey addKeyToQueue(RepositoryName repositoryName, PgpPublicKey publicKey) {
+        final var em = getEntityManager();
+
+        final var rfp = ReversedKeyFingerprint.fromFingerprint(publicKey.keyFingerprint());
+
+        final var publicKeyQueuePdo = em.find(PublicKeyQueuePdo.class, rfp);
+
+        if (publicKeyQueuePdo != null) {
+            remove(publicKeyQueuePdo);
+        }
+
+        final var newQueueKey = new PublicKeyQueuePdo(rfp);
+
+        em.merge(newQueueKey);
+
+        return publicKey;
     }
 }

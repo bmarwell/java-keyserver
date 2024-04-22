@@ -13,12 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.github.bmarwell.keyserver.application.port.repository;
+package io.github.bmarwell.keyserver.application.core;
 
+import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommandResponse;
 import io.github.bmarwell.keyserver.common.ids.PgpPublicKey;
-import io.github.bmarwell.keyserver.common.ids.RepositoryName;
 
-public interface KeyVerificationQueueDao {
-
-    PgpPublicKey addKeyToQueue(RepositoryName repositoryName, PgpPublicKey publicKey);
-}
+public record AddKeyToVerificationQueueResponse(PgpPublicKey submittedKey) implements KeyServerCommandResponse {}

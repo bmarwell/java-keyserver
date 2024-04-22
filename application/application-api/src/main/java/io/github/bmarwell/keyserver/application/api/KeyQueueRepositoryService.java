@@ -20,5 +20,5 @@ import io.github.bmarwell.keyserver.common.ids.RepositoryName;
 
 public interface KeyQueueRepositoryService {
 
-    void addKeyToRepository(RepositoryName repositoryName, PgpPublicKey publicKey);
+    PgpPublicKey addKeyToRepository(RepositoryName repositoryName, PgpPublicKey publicKey);
 }

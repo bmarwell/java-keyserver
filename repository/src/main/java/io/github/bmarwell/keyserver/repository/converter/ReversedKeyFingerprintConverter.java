@@ -13,12 +13,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.github.bmarwell.keyserver.application.port.repository;
+package io.github.bmarwell.keyserver.repository.converter;
 
-import io.github.bmarwell.keyserver.common.ids.PgpPublicKey;
-import io.github.bmarwell.keyserver.common.ids.RepositoryName;
+import io.github.bmarwell.keyserver.repository.pdo.ReversedKeyFingerprint;
+import jakarta.persistence.AttributeConverter;
+import jakarta.persistence.Converter;
 
-public interface KeyVerificationQueueDao {
+@Converter
+public class ReversedKeyFingerprintConverter implements AttributeConverter<ReversedKeyFingerprint, String> {
 
-    PgpPublicKey addKeyToQueue(RepositoryName repositoryName, PgpPublicKey publicKey);
+    @Override
+    public String convertToDatabaseColumn(ReversedKeyFingerprint attribute) {
+        return attribute.value();
+    }
+
+    @Override
+    public ReversedKeyFingerprint convertToEntityAttribute(String dbData) {
+        return new ReversedKeyFingerprint(dbData);
+    }
 }

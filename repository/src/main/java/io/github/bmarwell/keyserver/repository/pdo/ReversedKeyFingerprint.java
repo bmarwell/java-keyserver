@@ -13,23 +13,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.github.bmarwell.keyserver.repository;
+package io.github.bmarwell.keyserver.repository.pdo;
 
-import jakarta.inject.Inject;
-import jakarta.persistence.EntityManager;
+import io.github.bmarwell.keyserver.common.ids.KeyFingerprint;
+import java.util.Locale;
 
-public abstract class BaseRepository {
+public record ReversedKeyFingerprint(String value) {
 
-    @Inject
-    private EntityManager entityManager;
-
-    public BaseRepository() {}
-
-    public EntityManager getEntityManager() {
-        return entityManager;
+    public ReversedKeyFingerprint(String value) {
+        this.value = value.toLowerCase(Locale.ROOT);
     }
 
-    protected void remove(Object entity) {
-        getEntityManager().remove(entity);
+    public static ReversedKeyFingerprint fromFingerprint(KeyFingerprint keyFingerprint) {
+        final var fp = keyFingerprint.value();
+        final var rfpBuilder = new StringBuilder(fp.length());
+        rfpBuilder.append(keyFingerprint.value());
+        rfpBuilder.reverse();
+
+        return new ReversedKeyFingerprint(rfpBuilder.toString());
     }
 }
