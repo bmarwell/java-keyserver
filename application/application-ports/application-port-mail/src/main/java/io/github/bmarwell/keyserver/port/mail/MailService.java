@@ -19,5 +19,5 @@ import io.github.bmarwell.keyserver.common.ids.PgpPublicKey;
 
 public interface MailService {
 
-    void sendQueueConfirmationMail(PgpPublicKey key);
+    void sendQueueConfirmationMail(PgpPublicKey key, String newSecret);
 }

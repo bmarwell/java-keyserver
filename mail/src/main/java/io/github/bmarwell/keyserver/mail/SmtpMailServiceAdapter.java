@@ -25,7 +25,7 @@ import jakarta.enterprise.inject.Default;
 public class SmtpMailServiceAdapter implements MailService {
 
     @Override
-    public void sendQueueConfirmationMail(PgpPublicKey key) {
+    public void sendQueueConfirmationMail(PgpPublicKey key, String newSecret) {
         // TODO: implement
     }
 }

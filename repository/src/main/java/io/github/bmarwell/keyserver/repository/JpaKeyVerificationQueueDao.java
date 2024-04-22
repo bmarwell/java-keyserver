@@ -22,13 +22,16 @@ import io.github.bmarwell.keyserver.repository.pdo.PublicKeyQueuePdo;
 import io.github.bmarwell.keyserver.repository.pdo.ReversedKeyFingerprint;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Default;
+import java.util.random.RandomGenerator;
 
 @Default
 @ApplicationScoped
 public class JpaKeyVerificationQueueDao extends BaseRepository implements KeyVerificationQueueDao {
 
+    RandomGenerator random = RandomGenerator.getDefault();
+
     @Override
-    public PgpPublicKey addKeyToQueue(RepositoryName repositoryName, PgpPublicKey publicKey) {
+    public PgpPublicKey addKeyToQueue(RepositoryName repositoryName, PgpPublicKey publicKey, String secret) {
         final var em = getEntityManager();
 
         final var rfp = ReversedKeyFingerprint.fromFingerprint(publicKey.keyFingerprint());
@@ -36,10 +39,11 @@ public class JpaKeyVerificationQueueDao extends BaseRepository implements KeyVer
         final var publicKeyQueuePdo = em.find(PublicKeyQueuePdo.class, rfp);
 
         if (publicKeyQueuePdo != null) {
-            remove(publicKeyQueuePdo);
+            em.remove(publicKeyQueuePdo);
+            em.detach(publicKeyQueuePdo);
         }
 
-        final var newQueueKey = new PublicKeyQueuePdo(rfp);
+        final var newQueueKey = new PublicKeyQueuePdo(rfp, secret);
 
         em.merge(newQueueKey);
 

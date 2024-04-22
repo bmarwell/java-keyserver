@@ -20,22 +20,24 @@ import io.github.bmarwell.keyserver.application.api.commands.AddKeyToVerificatio
 import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommand;
 import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommandResponse;
 import io.github.bmarwell.keyserver.application.core.AddKeyToVerificationQueueResponse;
-import io.github.bmarwell.keyserver.common.ids.KeyFingerprint;
+import io.github.bmarwell.keyserver.application.core.util.SecretHelper;
 import io.github.bmarwell.keyserver.common.ids.PgpPublicKey;
+import io.github.bmarwell.keyserver.pgp.util.PgpKeyServerUtil;
 import io.github.bmarwell.keyserver.port.mail.MailService;
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import java.io.IOException;
-import java.util.Iterator;
 import org.bouncycastle.openpgp.*;
 import org.bouncycastle.openpgp.operator.bc.BcKeyFingerprintCalculator;
-import org.bouncycastle.util.encoders.Hex;
 
 @RequestScoped
 @Transactional
 public class AddKeyToVerificationQueueCommandHandler
         extends AbstractKeyServerCommandHandler<AddKeyToVerificationQueueCommand> {
+
+    @Inject
+    SecretHelper secretHelper;
 
     @Inject
     KeyQueueRepositoryService keyQueueRepositoryService;
@@ -56,42 +58,7 @@ public class AddKeyToVerificationQueueCommandHandler
             PGPPublicKeyRingCollection pgpPub =
                     new PGPPublicKeyRingCollection(decoderStream, new BcKeyFingerprintCalculator());
 
-            for (Iterator<PGPPublicKeyRing> rings = pgpPub.getKeyRings(); rings.hasNext(); ) {
-                PGPPublicKeyRing keyring = rings.next();
-
-                for (Iterator<PGPPublicKey> keys = keyring.getPublicKeys(); keys.hasNext(); ) {
-                    PGPPublicKey key = keys.next();
-
-                    if (key.isMasterKey()) {
-                        final var fp = new KeyFingerprint(Hex.toHexString(key.getFingerprint()));
-                        submittedKey = new PgpPublicKey(fp);
-                    }
-
-                    // TODO: check for valid self-sig.
-                    // -- if one valid self-sig exists, keep all that are not expired or expired within the last year
-                    // only.
-
-                    System.out.println("next key");
-                    System.out.println("is master key: " + key.isMasterKey());
-                    System.out.println("can encrypt: " + key.isEncryptionKey());
-                    System.out.println("algo: " + key.getAlgorithm());
-                    System.out.println("bits: " + key.getBitStrength());
-
-                    for (Iterator<String> userIds = key.getUserIDs(); userIds.hasNext(); ) {
-                        String userId = userIds.next();
-                        System.out.println(userId);
-                    }
-
-                    for (Iterator<PGPUserAttributeSubpacketVector> userIds = key.getUserAttributes();
-                            userIds.hasNext(); ) {
-                        PGPUserAttributeSubpacketVector userAttribute = userIds.next();
-                        System.out.println(userAttribute);
-                    }
-
-                    System.out.println(Long.toHexString(key.getKeyID()));
-                    System.out.println();
-                }
-            }
+            submittedKey = PgpKeyServerUtil.getOnlyKeyFromKeyring(pgpPub);
         } catch (IOException | PGPException e) {
             throw new RuntimeException(e);
         }
@@ -100,13 +67,15 @@ public class AddKeyToVerificationQueueCommandHandler
             throw new IllegalArgumentException("Did not find FP");
         }
 
-        var key = this.keyQueueRepositoryService.addKeyToRepository(command.repositoryName(), submittedKey);
+        final var newSecret = secretHelper.createNewSecret();
+
+        var key = this.keyQueueRepositoryService.addKeyToRepository(command.repositoryName(), submittedKey, newSecret);
 
         if (key == null) {
             throw new IllegalStateException("return was null, rolling back");
         }
 
-        this.getMailService().sendQueueConfirmationMail(key);
+        this.getMailService().sendQueueConfirmationMail(key, newSecret);
 
         // TODO: when successful, send verification mail
         // TODO: need a verification of all UIDs (mail addresses, if exist)

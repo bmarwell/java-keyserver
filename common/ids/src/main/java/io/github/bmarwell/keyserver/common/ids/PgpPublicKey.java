@@ -15,4 +15,4 @@
  */
 package io.github.bmarwell.keyserver.common.ids;
 
-public record PgpPublicKey(KeyFingerprint keyFingerprint) {}
+public record PgpPublicKey(KeyFingerprint keyFingerprint, java.time.Instant ctime, java.time.Instant expiry) {}

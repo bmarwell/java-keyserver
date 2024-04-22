@@ -20,5 +20,5 @@ import io.github.bmarwell.keyserver.common.ids.RepositoryName;
 
 public interface KeyVerificationQueueDao {
 
-    PgpPublicKey addKeyToQueue(RepositoryName repositoryName, PgpPublicKey publicKey);
+    PgpPublicKey addKeyToQueue(RepositoryName repositoryName, PgpPublicKey publicKey, String secret);
 }
