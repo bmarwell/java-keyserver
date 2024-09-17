@@ -15,10 +15,17 @@
  */
 package io.github.bmarwell.keyserver.mail;
 
+import io.github.bmarwell.keyserver.common.ids.PgpPublicKey;
 import io.github.bmarwell.keyserver.port.mail.MailService;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Default;
 
 @Default
 @ApplicationScoped
-public class SmtpMailServiceAdapter implements MailService {}
+public class SmtpMailServiceAdapter implements MailService {
+
+    @Override
+    public void sendQueueConfirmationMail(PgpPublicKey key, String newSecret) {
+        // TODO: implement
+    }
+}
