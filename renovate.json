@@ -5,10 +5,10 @@
   ],
   "packageRules": [
     {
-      "matchPackagePatterns": [
-        "^io.github.bmarwell.keyserver"
-      ],
-      "enabled": false
+      "enabled": false,
+      "matchPackageNames": [
+        "/^io.github.bmarwell.keyserver/"
+      ]
     },
     {
       "automerge": true,
@@ -26,7 +26,9 @@
       ]
     },
     {
-      "matchManagers": ["github-actions"],
+      "matchManagers": [
+        "github-actions"
+      ],
       "automerge": true,
       "automergeType": "pr"
     }
