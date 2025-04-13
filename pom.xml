@@ -40,7 +40,7 @@
     <bouncycastle.version>1.78.1</bouncycastle.version>
 
     <!-- plugin dependencies -->
-    <palantir-java-format.version>2.48.0</palantir-java-format.version>
+    <palantir-java-format.version>2.63.0</palantir-java-format.version>
     <flyway.version>10.17.0</flyway.version>
   </properties>
 
