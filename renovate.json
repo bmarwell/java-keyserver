@@ -9,6 +9,21 @@
         "^io.github.bmarwell.keyserver"
       ],
       "enabled": false
+    },
+    {
+      "automerge": true,
+      "automergeType": "pr",
+      "matchPackageNames": [
+        "/^org\\.apache\\.maven\\.plugins:.*/"
+      ]
+    },
+    {
+      "versioning": "minor",
+      "automerge": true,
+      "automergeType": "pr",
+      "matchPackageNames": [
+        "!^org\\.apache\\.maven\\.plugins:.*"
+      ]
     }
   ]
 }
