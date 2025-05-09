@@ -31,8 +31,8 @@ public class PersistentKeyQueueRepositoryService implements KeyQueueRepositorySe
     KeyVerificationQueueDao keyVerificationQueueDao;
 
     @Override
-    public void addKeyToRepository(RepositoryName repositoryName, PgpPublicKey publicKey) {
-        this.keyVerificationQueueDao.addKeyToRepository(repositoryName, publicKey);
+    public PgpPublicKey addKeyToRepository(RepositoryName repositoryName, PgpPublicKey publicKey, String secret) {
+        return this.keyVerificationQueueDao.addKeyToQueue(repositoryName, publicKey, secret);
     }
 
     public KeyVerificationQueueDao getKeyVerificationQueueDao() {
