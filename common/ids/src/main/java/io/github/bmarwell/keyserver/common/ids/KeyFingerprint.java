@@ -15,4 +15,19 @@
  */
 package io.github.bmarwell.keyserver.common.ids;
 
-public interface KeyFingerprint extends KeyId {}
+import java.util.Locale;
+
+public record KeyFingerprint(String value) implements KeyId {
+
+    public KeyFingerprint(final String value) {
+        if (value.length() < 40) {
+            throw new IllegalArgumentException("Key FP must be 40 bytes long.");
+        }
+
+        if (value.startsWith("0x") && value.length() == 42) {
+            this.value = value.substring(2).toLowerCase(Locale.ROOT);
+        } else {
+            this.value = value.toLowerCase(Locale.ROOT);
+        }
+    }
+}
