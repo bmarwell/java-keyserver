@@ -41,7 +41,7 @@
 
     <!-- plugin dependencies -->
     <palantir-java-format.version>2.72.0</palantir-java-format.version>
-    <flyway.version>11.10.3</flyway.version>
+    <flyway.version>11.10.4</flyway.version>
   </properties>
 
   <dependencyManagement>
