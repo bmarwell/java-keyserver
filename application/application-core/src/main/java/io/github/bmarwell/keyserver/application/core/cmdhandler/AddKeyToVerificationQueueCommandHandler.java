@@ -19,18 +19,25 @@ import io.github.bmarwell.keyserver.application.api.KeyQueueRepositoryService;
 import io.github.bmarwell.keyserver.application.api.commands.AddKeyToVerificationQueueCommand;
 import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommand;
 import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommandResponse;
+import io.github.bmarwell.keyserver.application.core.AddKeyToVerificationQueueResponse;
+import io.github.bmarwell.keyserver.application.core.util.SecretHelper;
+import io.github.bmarwell.keyserver.common.ids.PgpPublicKey;
+import io.github.bmarwell.keyserver.pgp.util.PgpKeyServerUtil;
 import io.github.bmarwell.keyserver.port.mail.MailService;
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 import java.io.IOException;
-import java.util.Iterator;
 import org.bouncycastle.openpgp.*;
 import org.bouncycastle.openpgp.operator.bc.BcKeyFingerprintCalculator;
-import org.bouncycastle.util.encoders.Hex;
 
 @RequestScoped
+@Transactional
 public class AddKeyToVerificationQueueCommandHandler
         extends AbstractKeyServerCommandHandler<AddKeyToVerificationQueueCommand> {
+
+    @Inject
+    SecretHelper secretHelper;
 
     @Inject
     KeyQueueRepositoryService keyQueueRepositoryService;
@@ -45,36 +52,31 @@ public class AddKeyToVerificationQueueCommandHandler
 
     @Override
     KeyServerCommandResponse doExecute(AddKeyToVerificationQueueCommand command) {
+        PgpPublicKey submittedKey = null;
+
         try (var decoderStream = PGPUtil.getDecoderStream(command.asciiArmoredKeyRing())) {
             PGPPublicKeyRingCollection pgpPub =
                     new PGPPublicKeyRingCollection(decoderStream, new BcKeyFingerprintCalculator());
 
-            for (Iterator<PGPPublicKeyRing> rings = pgpPub.getKeyRings(); rings.hasNext(); ) {
-                PGPPublicKeyRing keyring = rings.next();
-
-                for (Iterator<PGPPublicKey> keys = keyring.getPublicKeys(); keys.hasNext(); ) {
-                    PGPPublicKey key = keys.next();
-
-                    System.out.println("next key");
-                    System.out.println("is master key: " + key.isMasterKey());
-                    System.out.println("can encrypt: " + key.isEncryptionKey());
-                    System.out.println("algo: " + key.getAlgorithm());
-                    System.out.println("bits: " + key.getBitStrength());
-
-                    for (Iterator<String> userIds = key.getUserIDs(); userIds.hasNext(); ) {
-                        String userId = userIds.next();
-                        System.out.println(userId);
-                    }
-
-                    System.out.println(Long.toHexString(key.getKeyID()));
-                    System.out.println(Hex.toHexString(key.getFingerprint()));
-                }
-            }
+            submittedKey = PgpKeyServerUtil.getOnlyKeyFromKeyring(pgpPub);
         } catch (IOException | PGPException e) {
             throw new RuntimeException(e);
         }
 
-        this.keyQueueRepositoryService.addKeyToRepository(command.repositoryName(), null);
+        if (submittedKey == null) {
+            throw new IllegalArgumentException("Did not find FP");
+        }
+
+        final var newSecret = secretHelper.createNewSecret();
+
+        var key = this.keyQueueRepositoryService.addKeyToRepository(command.repositoryName(), submittedKey, newSecret);
+
+        if (key == null) {
+            throw new IllegalStateException("return was null, rolling back");
+        }
+
+        this.getMailService().sendQueueConfirmationMail(key, newSecret);
+
         // TODO: when successful, send verification mail
         // TODO: need a verification of all UIDs (mail addresses, if exist)
         // TODO: drop UIDs without mail address
@@ -82,7 +84,8 @@ public class AddKeyToVerificationQueueCommandHandler
         // TODO: drop expired
         // TODO: drop "created in future"
 
-        throw new UnsupportedOperationException("not implemented");
+        // throw new UnsupportedOperationException("not implemented");
+        return new AddKeyToVerificationQueueResponse(submittedKey);
     }
 
     public KeyQueueRepositoryService getKeyQueueRepositoryService() {

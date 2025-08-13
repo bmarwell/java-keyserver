@@ -22,12 +22,12 @@ import jakarta.enterprise.inject.Disposes;
 import jakarta.enterprise.inject.Produces;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
-import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.PersistenceUnit;
 
 @ApplicationScoped
 public class EntityManagerProducer {
 
-    @PersistenceContext(name = "keyserver")
+    @PersistenceUnit(name = "keyserver")
     private EntityManagerFactory entityManagerFactory;
 
     @Produces

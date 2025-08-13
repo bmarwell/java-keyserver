@@ -13,6 +13,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.github.bmarwell.keyserver.common.ids;
+package io.github.bmarwell.keyserver.repository.converter;
 
-public record PgpPublicKey(KeyFingerprint keyFingerprint, java.time.Instant ctime, java.time.Instant expiry) {}
+import io.github.bmarwell.keyserver.repository.pdo.ReversedKeyFingerprint;
+import jakarta.persistence.AttributeConverter;
+import jakarta.persistence.Converter;
+
+@Converter
+public class ReversedKeyFingerprintConverter implements AttributeConverter<ReversedKeyFingerprint, String> {
+
+    @Override
+    public String convertToDatabaseColumn(ReversedKeyFingerprint attribute) {
+        return attribute.value();
+    }
+
+    @Override
+    public ReversedKeyFingerprint convertToEntityAttribute(String dbData) {
+        return new ReversedKeyFingerprint(dbData);
+    }
+}

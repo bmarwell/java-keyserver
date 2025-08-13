@@ -17,6 +17,7 @@
 
   <modules>
     <module>ids</module>
+    <module>pgp-util</module>
   </modules>
 
 </project>

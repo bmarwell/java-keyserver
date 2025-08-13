@@ -15,4 +15,9 @@
  */
 package io.github.bmarwell.keyserver.port.mail;
 
-public interface MailService {}
+import io.github.bmarwell.keyserver.common.ids.PgpPublicKey;
+
+public interface MailService {
+
+    void sendQueueConfirmationMail(PgpPublicKey key, String newSecret);
+}
