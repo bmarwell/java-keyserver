@@ -42,16 +42,18 @@ class KeyServerCommandServiceTest {
         // when: @Asynchronous is not intercepted in unit tests — runs synchronously
         service.handleCommand(noopCommand);
 
-        // then: BTX was started and then recorded as failed
+        // then: BTX was started and then recorded as failed with the exception type
         assertThat(trackingRepo.startedCount).isEqualTo(1);
         assertThat(trackingRepo.failedCount).isEqualTo(1);
         assertThat(trackingRepo.completedCount).isZero();
+        assertThat(trackingRepo.lastErrorType).isEqualTo("UnsupportedOperationException");
     }
 
     private static final class TrackingBusinessTransactionRepository implements BusinessTransactionRepository {
         int startedCount;
         int completedCount;
         int failedCount;
+        String lastErrorType;
 
         @Override
         public void recordStarted(long btxId, String commandType, String callerIp) {
@@ -64,8 +66,9 @@ class KeyServerCommandServiceTest {
         }
 
         @Override
-        public void recordFailed(long btxId) {
+        public void recordFailed(long btxId, String errorType, String errorMessage) {
             failedCount++;
+            lastErrorType = errorType;
         }
     }
 }

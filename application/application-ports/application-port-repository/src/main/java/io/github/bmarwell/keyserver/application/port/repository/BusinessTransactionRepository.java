@@ -33,6 +33,10 @@ public interface BusinessTransactionRepository {
     /// Updates the row to state `COMPLETED` and sets `completed_at`.
     void recordCompleted(long btxId);
 
-    /// Updates the row to state `FAILED` and sets `completed_at`.
-    void recordFailed(long btxId);
+    /// Updates the row to state `FAILED`, sets `completed_at`, and stores the
+    /// exception class name and message for admin audit purposes.
+    ///
+    /// @param errorType    simple class name of the thrown exception
+    /// @param errorMessage `Exception.getMessage()`, may be `null`
+    void recordFailed(long btxId, String errorType, String errorMessage);
 }

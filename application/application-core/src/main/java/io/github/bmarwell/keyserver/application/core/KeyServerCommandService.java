@@ -89,7 +89,7 @@ public class KeyServerCommandService implements CommandService, Serializable {
             dispatch(keyServerCommand);
             btxRepository.recordCompleted(btxId);
         } catch (Exception ex) {
-            btxRepository.recordFailed(btxId);
+            btxRepository.recordFailed(btxId, ex.getClass().getSimpleName(), ex.getMessage());
             LOG.log(Level.WARNING, "Command {0} failed for BTX {1}: {2}", new Object[] {
                 commandType, btxId, ex.getMessage()
             });

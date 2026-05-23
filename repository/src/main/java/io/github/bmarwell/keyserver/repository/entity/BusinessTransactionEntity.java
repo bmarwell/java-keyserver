@@ -67,6 +67,12 @@ public class BusinessTransactionEntity {
     @Column(name = "completed_at")
     private OffsetDateTime completedAt;
 
+    @Column(name = "error_type")
+    private String errorType;
+
+    @Column(name = "error_message")
+    private String errorMessage;
+
     protected BusinessTransactionEntity() {}
 
     @PrePersist
@@ -95,9 +101,11 @@ public class BusinessTransactionEntity {
         this.completedAt = OffsetDateTime.now();
     }
 
-    public void markFailed() {
+    public void markFailed(String errorType, String errorMessage) {
         this.state = BusinessTransactionState.FAILED;
         this.completedAt = OffsetDateTime.now();
+        this.errorType = errorType;
+        this.errorMessage = errorMessage;
     }
 
     public long getId() {
@@ -130,5 +138,13 @@ public class BusinessTransactionEntity {
 
     public Optional<OffsetDateTime> getCompletedAt() {
         return Optional.ofNullable(completedAt);
+    }
+
+    public Optional<String> getErrorType() {
+        return Optional.ofNullable(errorType);
+    }
+
+    public Optional<String> getErrorMessage() {
+        return Optional.ofNullable(errorMessage);
     }
 }
