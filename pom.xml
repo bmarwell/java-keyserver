@@ -30,7 +30,7 @@
   </modules>
 
   <properties>
-    <java.version>21</java.version>
+    <java.version>25</java.version>
     <maven.version>[3.9.6,)</maven.version>
     <maven.compiler.release>${java.version}</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -40,13 +40,13 @@
     <bouncycastle.version>1.81</bouncycastle.version>
 
     <!-- plugin dependencies -->
-    <palantir-java-format.version>2.73.0</palantir-java-format.version>
+    <palantir-java-format.version>2.90.0</palantir-java-format.version>
     <flyway.version>11.11.1</flyway.version>
   </properties>
 
   <dependencyManagement>
     <dependencies>
-      <!-- Jakarta EE 10 -->
+      <!-- Jakarta EE 11 -->
       <dependency>
         <groupId>jakarta.enterprise</groupId>
         <artifactId>jakarta.enterprise.cdi-api</artifactId>
@@ -56,26 +56,27 @@
       <dependency>
         <groupId>jakarta.ws.rs</groupId>
         <artifactId>jakarta.ws.rs-api</artifactId>
-        <version>3.1.0</version>
+        <version>4.0.0</version>
         <scope>provided</scope>
       </dependency>
       <dependency>
         <groupId>jakarta.persistence</groupId>
         <artifactId>jakarta.persistence-api</artifactId>
-        <version>3.1.0</version>
+        <version>3.2.0</version>
         <scope>provided</scope>
       </dependency>
       <dependency>
         <groupId>jakarta.transaction</groupId>
         <artifactId>jakarta.transaction-api</artifactId>
         <version>2.0.1</version>
+        <scope>provided</scope>
       </dependency>
 
-      <!-- MicroProfile 6.0 -->
+      <!-- MicroProfile 7.1 -->
       <dependency>
         <groupId>org.eclipse.microprofile.openapi</groupId>
         <artifactId>microprofile-openapi-api</artifactId>
-        <version>3.1.2</version>
+        <version>4.1.1</version>
         <scope>provided</scope>
       </dependency>
 
@@ -292,7 +293,7 @@
             <configuration>
               <rules>
                 <requireJavaVersion>
-                  <version>${java.version}</version>
+                  <version>[${java.version},)</version>
                 </requireJavaVersion>
                 <requireMavenVersion>
                   <version>${maven.version}</version>

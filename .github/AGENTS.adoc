@@ -17,6 +17,8 @@ inventing new ones.
   `application-core`, `application-ports`, `repository`, `mail`, and `web/*`.
 * Use Jakarta EE patterns already present in the codebase: CDI, JAX-RS, JPA,
   and JTA.
+* Target Java 25 and Jakarta EE 11; keep Open Liberty configs on platform
+  features rather than hand-pinned feature versions.
 * Keep web resources thin; route behavior through commands, services, and
   adapters.
 * Treat repository and mail code as outbound adapters behind ports.
@@ -27,6 +29,7 @@ inventing new ones.
 * Do not add temporary hacks or broad fallbacks.
 * Keep names, formatting, and package structure consistent with nearby code.
 * Avoid mixing docs, refactors, and behavior changes unless the task needs it.
+* After each Java or `pom.xml` change, run `./mvnw spotless:apply`.
 
 == Verification
 
