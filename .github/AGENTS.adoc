@@ -23,6 +23,38 @@ inventing new ones.
   adapters.
 * Treat repository and mail code as outbound adapters behind ports.
 
+== Code style
+
+* Use sealed interfaces and sealed classes where the type hierarchy is closed and known.
+* Prefer records over plain classes for immutable data carriers (commands, responses, value
+  objects) where sensible.
+* Never add nullable fields; use `Optional` for absent values.
+* Comment sparsely with Markdown Javadoc (`///` style); only where clarification is needed.
+
+== JSON
+
+* Do not add Jackson.  Use Jakarta JSON-B (`jakarta.json.bind`) for
+  object serialisation and Jakarta JSON-P (`jakarta.json`) for programmatic
+  JSON construction (e.g. in exception mappers).
+* Both APIs are provided by the Jakarta EE 11 platform on Open Liberty — no extra
+  runtime dependency is needed.
+
+== Security
+
+* Exception mappers must never expose internal details (stack traces, internal IDs,
+  database errors) in response bodies.  Log full details server-side only.
+* Include a correlation ID (`X-Correlation-ID`) header in error responses so
+  callers can reference the issue without seeing internals.
+* Return only information the caller could already have known (e.g. the key ID they
+  supplied in their request).
+
+== Transactions
+
+* Wrap each command at the `CommandService` level with `@Transactional`, not just
+  the DAO layer.
+* Audit log writes must use `@Transactional(Transactional.TxType.REQUIRES_NEW)` so
+  they persist even when the main transaction rolls back.
+
 == Change discipline
 
 * Prefer the simplest correct solution.
