@@ -38,6 +38,7 @@
     <!-- 3rd party dependencies -->
     <immutables-value.version>2.10.0</immutables-value.version>
     <bouncycastle.version>1.81</bouncycastle.version>
+    <hypersistence-tsid.version>2.1.4</hypersistence-tsid.version>
 
     <!-- plugin dependencies -->
     <palantir-java-format.version>2.90.0</palantir-java-format.version>
@@ -91,6 +92,11 @@
         <artifactId>logback-classic</artifactId>
         <version>1.5.18</version>
         <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>io.hypersistence</groupId>
+        <artifactId>hypersistence-tsid</artifactId>
+        <version>${hypersistence-tsid.version}</version>
       </dependency>
       <dependency>
         <groupId>org.flywaydb</groupId>

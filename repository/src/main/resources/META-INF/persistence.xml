@@ -1,10 +1,14 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <persistence xmlns="https://jakarta.ee/xml/ns/persistence"
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="https://jakarta.ee/xml/ns/persistence https://jakarta.ee/xml/ns/persistence/persistence_3_1.xsd"
-  version="3.0">
+  xsi:schemaLocation="https://jakarta.ee/xml/ns/persistence https://jakarta.ee/xml/ns/persistence/persistence_3_2.xsd"
+  version="3.2">
   <persistence-unit name="keyserver" transaction-type="JTA">
     <jta-data-source>jdbc/keyserver</jta-data-source>
+    <class>io.github.bmarwell.keyserver.repository.entity.KeyEntity</class>
+    <class>io.github.bmarwell.keyserver.repository.entity.UidEntity</class>
+    <class>io.github.bmarwell.keyserver.repository.entity.VerificationQueueEntity</class>
+    <class>io.github.bmarwell.keyserver.repository.entity.AuditLogEntity</class>
     <properties>
       <property name="jakarta.persistence.schema-generation.database.action"        value="none"/>
       <property name="jakarta.persistence.schema-generation.scripts.action"        value="none"/>

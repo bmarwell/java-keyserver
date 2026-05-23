@@ -92,7 +92,57 @@ For lookup use cases, the flow is shorter:
 * The ports/adapters boundary should make future storage or mail replacements easy.
 * Flyway plus JPA is a sensible fit for repository metadata and queue state.
 
-== 8. Current state
+== 8. Identity strategy
+
+=== Why surrogate IDs on workflow tables
+
+The `verification_queue` table needs a primary key that is *not* the key fingerprint,
+for two reasons:
+
+* **Cardinality** — a single key can have multiple UIDs, each requiring its own
+  verification entry, so the fingerprint is not unique within the queue.
+  Re-submissions of the same key also create new entries.
+* **Security** — the queue PK doubles as the opaque token embedded in the
+  verification email link.  Using the fingerprint here would leak which key is
+  under verification to anyone who intercepts the URL.  A surrogate ID keeps
+  that information out of the token.
+
+The `audit_log` table uses a surrogate key simply because log rows have no
+meaningful natural key; the fingerprint and command type can appear many times.
+
+=== Why TSID and not UUID
+
+All surrogate IDs on workflow tables use
+https://github.com/vladmihalcea/hypersistence-tsid[TSID] (Time-Sorted Unique
+Identifier) stored as `BIGINT` rather than a `UUID`.
+
+[cols="1,1,1"]
+|===
+|Property |UUID (v4) |TSID
+
+|Storage
+|16 bytes
+|8 bytes (BIGINT)
+
+|Index behaviour
+|Random — causes B-tree page splits and fragmentation
+|Time-sorted — sequential inserts remain clustered
+
+|Comparison
+|Byte-array or string comparison
+|Native 64-bit integer comparison
+
+|URL footprint
+|36 chars (`xxxxxxxx-xxxx-…`)
+|~13 chars (base-32 canonical form), or just a decimal long
+|===
+
+Because TSID encodes a millisecond timestamp, a node identifier, and a
+sequence counter into 64 bits, it is unique enough for this workload, globally
+unguessable as a verification token, and far friendlier to the PostgreSQL
+B-tree index on the `id` column than a random UUID would be.
+
+== 9. Current state
 
 This repository has a promising structure but is not yet functionally complete.
 Treat this document as an orientation guide, not a stable architecture promise.
