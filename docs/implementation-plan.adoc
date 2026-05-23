@@ -210,8 +210,8 @@ One row per OpenPGP User ID bound to a key.
 |Column |Type |Notes
 
 |`id`
-|`UUID PRIMARY KEY DEFAULT gen_random_uuid()`
-|Opaque verification token sent to the user by email.
+|`BIGINT NOT NULL PRIMARY KEY`
+|TSID assigned by the application before insert. Opaque verification token sent to the user by email.
 
 |`fingerprint`
 |`TEXT NOT NULL`
@@ -467,7 +467,7 @@ in `repository`.  Its write always uses `REQUIRES_NEW` so it survives a rollback
 * Implement DAOs.
 * Add Flyway migrations: `V003__expand-keys.sql`, `V004__create-uids.sql`,
   `V005__create-verification-queue.sql`, `V006__create-audit-log.sql`.
-* Enable `gen_random_uuid()` (requires `pgcrypto` extension — add to migration).
+* Enable `pgcrypto` extension is no longer needed — PKs use TSID (application-assigned `BIGINT`).
 
 === 6.6 `web/openpgp-keyserver-protocol`
 
@@ -582,8 +582,7 @@ public class KeyServerCommandService implements CommandService {
 
     @Asynchronous(executor = "java:app/concurrent/KeyServerCommandExecutor")
     @Override
-    public <T extends KeyServerCommand> CompletableFuture<KeyServerCommandResponse>
-            handleCommand(T command) { … }
+    public <T extends KeyServerCommand> void handleCommand(T command) { … }
 }
 ----
 
@@ -594,9 +593,12 @@ Benefits of virtual threads here:
 * The thread pool does not need tuning; the JVM scheduler manages virtual thread
   concurrency automatically.
 
-`CommandService.handleCommand()` now returns `CompletableFuture<KeyServerCommandResponse>`.
-JAX-RS resource methods return `CompletionStage<Response>` so the container can
-handle async HTTP responses without blocking.
+`CommandService.handleCommand()` returns `void` — it is fire-and-forget from the
+caller's perspective.  Exceptions are caught inside the async body and persisted
+to the BTX row (`error_type`, `error_message`).  JAX-RS resource methods return
+plain `Response` (synchronous); they call `handleCommand()` then return
+`202 Accepted` immediately without any `CompletableFuture` or `CompletionStage`
+in their signatures.
 
 === 7.5 BTX Lifecycle Within handleCommand()
 
@@ -608,7 +610,7 @@ handleCommand(cmd):                              (runs in virtual thread)
   3. btxContext.set(btxId)                       @RequestScoped CDI bean
   4. @Transactional: handler.execute(cmd)
   5a. success → btxRepo.recordCompleted(btxId)  REQUIRES_NEW
-  5b. failure → btxRepo.recordFailed(btxId)     REQUIRES_NEW
+  5b. failure → btxRepo.recordFailed(btxId, errorType, errorMessage)  REQUIRES_NEW
 ----
 
 Using `REQUIRES_NEW` for all BTX writes ensures they survive a JTA rollback on the
@@ -625,7 +627,7 @@ the handler's stack without any explicit parameter threading.
 |Module |Change
 
 |`application-api`
-|`CommandService.handleCommand()` returns `CompletableFuture<KeyServerCommandResponse>`
+|`CommandService.handleCommand()` returns `void` (fire-and-forget)
 
 |`application-core`
 |`KeyServerCommandService`: `@ManagedExecutorDefinition`, `@Asynchronous`, BTX wiring;
@@ -639,5 +641,5 @@ the handler's stack without any explicit parameter threading.
 `AuditLogEntity` gains `btxId` field; Flyway V007 + V008
 
 |`web/*`
-|Resource methods return `CompletionStage<Response>`
+|Resource methods return plain `Response` (synchronous, `202 Accepted`)
 |===
