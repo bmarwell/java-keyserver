@@ -16,8 +16,9 @@
 package io.github.bmarwell.keyserver.mail;
 
 import io.github.bmarwell.keyserver.application.port.notification.VerificationNotificationPort;
+import jakarta.annotation.Priority;
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.enterprise.inject.Default;
+import jakarta.enterprise.inject.Alternative;
 import java.net.URI;
 import java.util.logging.Logger;
 
@@ -27,9 +28,15 @@ import java.util.logging.Logger;
 /// `INFO` level.  This lets operators confirm the key submission flow end-to-end
 /// without configuring an SMTP server.
 ///
+/// This bean is an `@Alternative` with an application-range priority (2000) so
+/// it is globally active while no higher-priority implementation (e.g., an SMTP
+/// adapter) is present.  Adding an SMTP adapter with a higher `@Priority` value
+/// will automatically supersede this adapter without any `beans.xml` changes.
+///
 /// Replace with (or add alongside) `SmtpVerificationNotificationAdapter` when
 /// real email delivery is needed.  The port interface is unchanged.
-@Default
+@Alternative
+@Priority(2000)
 @ApplicationScoped
 public class LoggingVerificationNotificationAdapter implements VerificationNotificationPort {
 

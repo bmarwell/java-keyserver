@@ -18,8 +18,11 @@
     container via Testcontainers.  They are intentionally excluded from the
     default `test` lifecycle and only run during `verify` via the failsafe plugin.
 
+    Failsafe is guarded by the `run-its` profile to keep Docker/Testcontainers
+    out of the standard PR build.
+
     To run locally:
-        ./mvnw verify -pl integration-tests -am
+        ./mvnw verify -pl integration-tests -am -P run-its
   -->
 
   <dependencies>
@@ -52,20 +55,6 @@
 
   <build>
     <plugins>
-      <!-- Failsafe runs *IT.java classes during the verify phase -->
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-failsafe-plugin</artifactId>
-        <executions>
-          <execution>
-            <goals>
-              <goal>integration-test</goal>
-              <goal>verify</goal>
-            </goals>
-          </execution>
-        </executions>
-      </plugin>
-
       <!-- Skip surefire — no unit tests here -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -76,5 +65,28 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!-- Activate with -P run-its to run integration tests (requires Docker). -->
+    <profile>
+      <id>run-its</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-failsafe-plugin</artifactId>
+            <executions>
+              <execution>
+                <goals>
+                  <goal>integration-test</goal>
+                  <goal>verify</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 
 </project>

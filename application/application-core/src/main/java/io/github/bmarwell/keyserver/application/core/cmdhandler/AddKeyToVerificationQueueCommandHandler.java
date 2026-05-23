@@ -69,7 +69,7 @@ import org.bouncycastle.openpgp.operator.bc.BcKeyFingerprintCalculator;
 /// The command carries the pre-anonymized client IP for audit purposes.
 /// It is not persisted here — it will be written to the BTX audit row once
 /// `BusinessTransactionRepository.recordStarted()` is extended to accept
-/// optional metadata (see implementation-plan §7.5).
+/// optional metadata (see implementation-plan §7.7).
 @RequestScoped
 public class AddKeyToVerificationQueueCommandHandler
         extends AbstractKeyServerCommandHandler<AddKeyToVerificationQueueCommand> {

@@ -16,6 +16,7 @@
 package io.github.bmarwell.keyserver.repository;
 
 import io.github.bmarwell.keyserver.application.port.repository.VerificationQueueRepository;
+import io.github.bmarwell.keyserver.application.port.repository.VerificationQueueRepository.VerificationRequest;
 import io.github.bmarwell.keyserver.repository.entity.VerificationQueueEntity;
 import io.hypersistence.tsid.TSID;
 import jakarta.enterprise.context.ApplicationScoped;
