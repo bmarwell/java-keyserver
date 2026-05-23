@@ -32,6 +32,9 @@ import java.util.Optional;
 /// Sequential DB-assigned integers are the simplest correct choice for a
 /// write-only append log.
 ///
+/// Each row references the `business_transactions` row via `btxId`, so admins
+/// can join audit entries with the full BTX lifecycle record.
+///
 /// Not a record: JPA requires a no-arg constructor and mutable state for proxy support.
 @Entity
 @Table(name = "audit_log")
@@ -41,6 +44,10 @@ public class AuditLogEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id", nullable = false, updatable = false)
     private Long id;
+
+    /// Foreign key to `business_transactions.id`.  Every audit entry belongs to exactly one BTX.
+    @Column(name = "btx_id", nullable = false, updatable = false)
+    private long btxId;
 
     @Column(name = "command_type", nullable = false, updatable = false)
     private String commandType;
@@ -66,22 +73,28 @@ public class AuditLogEntity {
 
     protected AuditLogEntity() {}
 
-    private AuditLogEntity(String commandType, String requestIp, String fingerprint) {
+    private AuditLogEntity(long btxId, String commandType, String requestIp, String fingerprint) {
+        this.btxId = btxId;
         this.commandType = commandType;
         this.requestIp = requestIp;
         this.fingerprint = fingerprint;
         this.occurredAt = OffsetDateTime.now();
     }
 
-    public static AuditLogEntity success(String commandType, String requestIp, String fingerprint) {
-        var entry = new AuditLogEntity(commandType, requestIp, fingerprint);
+    public static AuditLogEntity success(long btxId, String commandType, String requestIp, String fingerprint) {
+        var entry = new AuditLogEntity(btxId, commandType, requestIp, fingerprint);
         entry.result = "SUCCESS";
         return entry;
     }
 
     public static AuditLogEntity failure(
-            String commandType, String requestIp, String fingerprint, String failureType, String failureMessage) {
-        var entry = new AuditLogEntity(commandType, requestIp, fingerprint);
+            long btxId,
+            String commandType,
+            String requestIp,
+            String fingerprint,
+            String failureType,
+            String failureMessage) {
+        var entry = new AuditLogEntity(btxId, commandType, requestIp, fingerprint);
         entry.result = "FAILURE";
         entry.failureType = failureType;
         entry.failureMessage = failureMessage;
@@ -90,6 +103,10 @@ public class AuditLogEntity {
 
     public Long getId() {
         return id;
+    }
+
+    public long getBtxId() {
+        return btxId;
     }
 
     public String getCommandType() {

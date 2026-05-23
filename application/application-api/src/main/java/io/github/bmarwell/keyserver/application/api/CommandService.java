@@ -16,8 +16,14 @@
 package io.github.bmarwell.keyserver.application.api;
 
 import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommand;
+import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommandResponse;
+import java.util.concurrent.CompletableFuture;
 
 public interface CommandService {
 
-    <T extends KeyServerCommand> void handleCommand(T keyServerCommand);
+    /// Executes the given command asynchronously in a dedicated virtual-thread executor.
+    ///
+    /// Returns a `CompletableFuture` that completes with the handler's result on success,
+    /// or completes exceptionally with a `KeyServerException` subtype on business errors.
+    <T extends KeyServerCommand> CompletableFuture<KeyServerCommandResponse> handleCommand(T keyServerCommand);
 }

@@ -496,3 +496,148 @@ in `repository`.  Its write always uses `REQUIRES_NEW` so it survives a rollback
   a configurable allow-list.
 * *Synchronization*: Multi-keyserver sync is out of scope for now.  The
   `RepositoryName` value object is in place but the sync protocol is not planned.
+
+== 7. Business Transactions (BTX)
+
+=== 7.1 Motivation
+
+Every write command (add key, verify UID, revoke key) must be traceable end-to-end
+so that administrators can answer questions like:
+
+* "Which commands ran against fingerprint X in the last 24 hours?"
+* "Did the add-key command for key Y complete, or did it fail mid-way?"
+* "Show me all commands initiated from IP address Z."
+
+A *business transaction* (BTX) is the outer unit of administrative tracking.
+It is distinct from the JTA database transaction: a BTX spans one command invocation
+from entry to final state, survives JTA rollbacks (it writes its own status in a
+separate JTA transaction), and is stored permanently in the `business_transactions`
+table for audit purposes.
+
+=== 7.2 Business Transaction Table
+
+[source,sql]
+----
+CREATE TABLE business_transactions (
+    id              BIGINT                   NOT NULL PRIMARY KEY,  -- TSID (app-assigned)
+    command_type    TEXT                     NOT NULL,
+    fingerprint     TEXT,                    -- NULL if not extractable before dispatch
+    caller_ip       TEXT,
+    state           TEXT                     NOT NULL,
+    started_at      TIMESTAMPTZ              NOT NULL DEFAULT now(),
+    completed_at    TIMESTAMPTZ
+);
+-- state IN ('STARTED', 'COMPLETED', 'FAILED')
+----
+
+The `audit_log` table gains a non-nullable foreign key `btx_id BIGINT REFERENCES business_transactions(id)`.
+
+=== 7.3 BTX ID Strategy
+
+BTX IDs use the same TSID approach as `verification_queue`, but via a *node-aware*
+`TsidFactory` rather than `TSID.fast()`.
+
+The TSID bit layout with a 10-bit node field:
+
+[cols="1,1,2"]
+|===
+|Bits |Content |Notes
+
+|42
+|Millisecond timestamp
+|~139 years before overflow
+
+|10
+|Node ID
+|0–1023; configured via env var `TSID_NODE` (defaults to 0)
+
+|12
+|Per-millisecond sequence counter
+|4096 unique IDs per node per millisecond
+|===
+
+This supports up to 1024 concurrent server instances without coordination, with
+4 096 × 1 024 = ~4 M unique IDs per millisecond globally.
+
+A CDI `@ApplicationScoped` producer creates the `TsidFactory` once at startup,
+reading `TSID_NODE` from the environment (or falling back to 0).  All components
+that need a TSID inject the factory rather than calling `TSID.fast()`.
+
+=== 7.4 Asynchronous Command Execution
+
+`KeyServerCommandService.handleCommand()` is annotated with
+`@ManagedExecutorDefinition` (Jakarta Concurrency 3.1) to define a dedicated
+virtual-thread executor, and with `@Asynchronous(executor = "...")` so every
+command runs off the HTTP request thread.
+
+[source,java]
+----
+@ManagedExecutorDefinition(
+    name     = "java:app/concurrent/KeyServerCommandExecutor",
+    virtual  = true,   // Java 21+ virtual threads
+    maxAsync = -1      // no limit; virtual threads are cheap
+)
+@ApplicationScoped
+public class KeyServerCommandService implements CommandService {
+
+    @Asynchronous(executor = "java:app/concurrent/KeyServerCommandExecutor")
+    @Override
+    public <T extends KeyServerCommand> CompletableFuture<KeyServerCommandResponse>
+            handleCommand(T command) { … }
+}
+----
+
+Benefits of virtual threads here:
+
+* Command handlers perform I/O (PostgreSQL, SMTP).  Virtual threads park during
+  I/O without blocking a platform thread.
+* The thread pool does not need tuning; the JVM scheduler manages virtual thread
+  concurrency automatically.
+
+`CommandService.handleCommand()` now returns `CompletableFuture<KeyServerCommandResponse>`.
+JAX-RS resource methods return `CompletionStage<Response>` so the container can
+handle async HTTP responses without blocking.
+
+=== 7.5 BTX Lifecycle Within handleCommand()
+
+[source]
+----
+handleCommand(cmd):                              (runs in virtual thread)
+  1. generate btxId  (TSID via TsidFactory)
+  2. btxRepo.recordStarted(btxId, cmd)          REQUIRES_NEW → commits immediately
+  3. btxContext.set(btxId)                       @RequestScoped CDI bean
+  4. @Transactional: handler.execute(cmd)
+  5a. success → btxRepo.recordCompleted(btxId)  REQUIRES_NEW
+  5b. failure → btxRepo.recordFailed(btxId)     REQUIRES_NEW
+----
+
+Using `REQUIRES_NEW` for all BTX writes ensures they survive a JTA rollback on the
+command's main transaction.
+
+Jakarta Concurrency 3.1 propagates the CDI request context to the async thread,
+so the `@RequestScoped` `BusinessTransactionContext` bean is available throughout
+the handler's stack without any explicit parameter threading.
+
+=== 7.6 Modules Affected
+
+[cols="1,3"]
+|===
+|Module |Change
+
+|`application-api`
+|`CommandService.handleCommand()` returns `CompletableFuture<KeyServerCommandResponse>`
+
+|`application-core`
+|`KeyServerCommandService`: `@ManagedExecutorDefinition`, `@Asynchronous`, BTX wiring;
+`TsidFactory` CDI producer; `BusinessTransactionContext` @RequestScoped bean
+
+|`application-port-repository`
+|New `BusinessTransactionRepository` port interface
+
+|`repository`
+|New `PersistentBusinessTransactionRepository`; new `BusinessTransactionEntity`;
+`AuditLogEntity` gains `btxId` field; Flyway V007 + V008
+
+|`web/*`
+|Resource methods return `CompletionStage<Response>`
+|===

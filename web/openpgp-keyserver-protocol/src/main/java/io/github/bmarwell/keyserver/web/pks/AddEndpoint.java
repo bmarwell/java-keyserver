@@ -25,6 +25,7 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Response;
 import java.io.InputStream;
+import java.util.concurrent.CompletionStage;
 import org.eclipse.microprofile.openapi.annotations.parameters.RequestBody;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 
@@ -39,13 +40,15 @@ public class AddEndpoint {
     CommandService commandService;
 
     @POST
-    public Response addKey(@RequestBody InputStream requestBody, @QueryParam("options") String options) {
-        AddKeyToVerificationQueueCommand command =
-                new AddKeyToVerificationQueueCommand(requestBody, RepositoryName.fromString("LOCAL"));
+    public CompletionStage<Response> addKey(
+            @RequestBody InputStream requestBody, @QueryParam("options") String options) {
+        var command = new AddKeyToVerificationQueueCommand(requestBody, RepositoryName.fromString("LOCAL"));
 
-        this.commandService.handleCommand(command);
-
-        return Response.status(Response.Status.NOT_IMPLEMENTED).build();
+        return commandService
+                .handleCommand(command)
+                .thenApply(result -> Response.accepted().build())
+                .exceptionally(
+                        ex -> Response.status(Response.Status.BAD_REQUEST).build());
     }
 
     public KeyRepositoryService getRepositoryService() {

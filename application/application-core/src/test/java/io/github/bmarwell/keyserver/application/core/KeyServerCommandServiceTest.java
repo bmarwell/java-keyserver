@@ -18,7 +18,11 @@ package io.github.bmarwell.keyserver.application.core;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommand;
+import io.github.bmarwell.keyserver.application.core.concurrent.BusinessTransactionContext;
+import io.github.bmarwell.keyserver.application.port.repository.BusinessTransactionRepository;
 import io.github.bmarwell.keyserver.test.utils.cdi.SimpleInstance;
+import io.hypersistence.tsid.TSID;
+import java.util.concurrent.CompletionException;
 import org.junit.jupiter.api.Test;
 
 class KeyServerCommandServiceTest {
@@ -28,11 +32,28 @@ class KeyServerCommandServiceTest {
         // given:
         var noopCommand = new KeyServerCommand() {};
 
-        KeyServerCommandService keyServerCommandService = new KeyServerCommandService();
-        keyServerCommandService.setCommandHandlers(SimpleInstance.empty());
+        KeyServerCommandService service = new KeyServerCommandService();
+        service.setCommandHandlers(SimpleInstance.empty());
+        service.setBtxRepository(new NoopBusinessTransactionRepository());
+        service.setBtxContext(new BusinessTransactionContext());
+        service.setTsidFactory(
+                TSID.Factory.builder().withNodeBits(10).withNode(0).build());
 
-        // expect
-        assertThatThrownBy(() -> keyServerCommandService.handleCommand(noopCommand))
-                .isInstanceOf(UnsupportedOperationException.class);
+        // expect: the future completes exceptionally
+        var future = service.handleCommand(noopCommand);
+        assertThatThrownBy(future::join)
+                .isInstanceOf(CompletionException.class)
+                .hasCauseInstanceOf(UnsupportedOperationException.class);
+    }
+
+    private static final class NoopBusinessTransactionRepository implements BusinessTransactionRepository {
+        @Override
+        public void recordStarted(long btxId, String commandType, String callerIp) {}
+
+        @Override
+        public void recordCompleted(long btxId) {}
+
+        @Override
+        public void recordFailed(long btxId) {}
     }
 }

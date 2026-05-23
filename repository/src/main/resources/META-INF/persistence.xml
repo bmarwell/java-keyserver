@@ -8,6 +8,7 @@
     <class>io.github.bmarwell.keyserver.repository.entity.KeyEntity</class>
     <class>io.github.bmarwell.keyserver.repository.entity.UidEntity</class>
     <class>io.github.bmarwell.keyserver.repository.entity.VerificationQueueEntity</class>
+    <class>io.github.bmarwell.keyserver.repository.entity.BusinessTransactionEntity</class>
     <class>io.github.bmarwell.keyserver.repository.entity.AuditLogEntity</class>
     <properties>
       <property name="jakarta.persistence.schema-generation.database.action"        value="none"/>
