@@ -15,8 +15,15 @@
  */
 package io.github.bmarwell.keyserver.application.api.commands;
 
-import io.github.bmarwell.keyserver.common.ids.RepositoryName;
-import java.io.InputStream;
-
-public record AddKeyToVerificationQueueCommand(InputStream asciiArmoredKeyRing, RepositoryName repositoryName)
-        implements KeyServerCommand {}
+/// Command to submit a PGP public key for email-based ownership verification.
+///
+/// The primary adapter (`AddEndpoint`) reads the ASCII-armored key text from the
+/// HTTP request body **synchronously**, anonymizes the caller's IP, and then
+/// builds this command before handing it to `CommandService`.  Passing a
+/// `String` (rather than an `InputStream`) avoids a closed-stream race when the
+/// virtual-thread executor picks up the command after the HTTP thread returns.
+///
+/// The `anonymizedClientIp` field must already be anonymized (IPv4 last octet
+/// zeroed, IPv6 last 80 bits zeroed) before this record is constructed.  No
+/// downstream component should receive or store a raw IP.
+public record AddKeyToVerificationQueueCommand(String keyText, String anonymizedClientIp) implements KeyServerCommand {}

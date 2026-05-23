@@ -17,6 +17,7 @@
   <modules>
     <module>application-port-repository</module>
     <module>application-port-mail</module>
+    <module>application-port-notification</module>
   </modules>
 
   <dependencies>

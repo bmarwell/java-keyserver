@@ -86,7 +86,8 @@ public class VerificationQueueEntity {
     protected VerificationQueueEntity() {}
 
     public VerificationQueueEntity(
-            String fingerprint, String uidRaw, String uidEmail, String armoredKey, OffsetDateTime expiresAt) {
+            long id, String fingerprint, String uidRaw, String uidEmail, String armoredKey, OffsetDateTime expiresAt) {
+        this.id = id;
         this.fingerprint = fingerprint;
         this.uidRaw = uidRaw;
         this.uidEmail = uidEmail;
