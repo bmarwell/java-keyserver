@@ -54,6 +54,34 @@ inventing new ones.
   the DAO layer.
 * Audit log writes must use `@Transactional(Transactional.TxType.REQUIRES_NEW)` so
   they persist even when the main transaction rolls back.
+* Business transaction (BTX) rows (`business_transactions` table) are always written
+  with `REQUIRES_NEW` — they must be durable regardless of handler outcome.
+
+== Business transaction (BTX) tracking
+
+Every mutating command is wrapped in a BTX lifecycle:
+
+1. Generate a node-aware TSID (`TsidFactoryProducer` / injected `TSID.Factory`).
+2. Write a `STARTED` row in `business_transactions` (`REQUIRES_NEW`).
+3. Store the `btxId` in `@RequestScoped BusinessTransactionContext` (no param threading needed).
+4. Run the handler inside a `REQUIRED` transaction.
+5. Update the row to `COMPLETED` or `FAILED` (`REQUIRES_NEW`).
+
+== TSID node configuration
+
+* The `TSID_NODE` environment variable sets the 10-bit node ID (0–1023, default 0).
+* In a multi-node deployment **every instance must have a unique node ID**.
+* Do NOT use `TSID.fast()` for persistent IDs — it ignores `TSID_NODE`.
+* TSID bit layout: 42-bit timestamp | 10-bit node | 12-bit sequence = 1024 nodes × 4096/ms.
+
+== Async command execution
+
+* `KeyServerCommandService` carries `@ManagedExecutorDefinition(virtual = true)` and
+  dispatches via `@Asynchronous(executor = "java:app/concurrent/KeyServerCommandExecutor")`.
+* Returns `CompletableFuture<KeyServerCommandResponse>` — callers chain with `thenApply`.
+* JAX-RS endpoints return `CompletionStage<Response>`.
+* Jakarta Concurrency 3.1 propagates CDI request scope to virtual threads — `@RequestScoped`
+  beans (including `BusinessTransactionContext`) are safe to inject in handler classes.
 
 == Change discipline
 

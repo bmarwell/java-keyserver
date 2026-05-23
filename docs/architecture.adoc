@@ -142,7 +142,70 @@ sequence counter into 64 bits, it is unique enough for this workload, globally
 unguessable as a verification token, and far friendlier to the PostgreSQL
 B-tree index on the `id` column than a random UUID would be.
 
-== 9. Current state
+== 10. Business transactions
+
+=== Motivation
+
+Every mutating command (add key, disable key, revoke key) is tracked in a
+`business_transactions` row before any handler logic runs.  This provides:
+
+* A durable audit log that survives handler failures or JTA rollbacks.
+* A foundation for admin dashboards and anomaly detection.
+* A correlation ID (`btx_id`) that links the audit log entry to the originating
+  command invocation.
+
+=== Schema
+
+----
+business_transactions
+  id            BIGINT (TSID)   PK     -- node-aware, 42-bit ts | 10-bit node | 12-bit seq
+  command_type  TEXT NOT NULL
+  fingerprint   TEXT            NULL   -- extracted when available
+  caller_ip     TEXT            NULL
+  state         TEXT NOT NULL          -- STARTED | COMPLETED | FAILED
+  started_at    TIMESTAMPTZ NOT NULL
+  completed_at  TIMESTAMPTZ     NULL
+
+audit_log
+  btx_id        BIGINT NOT NULL  FK → business_transactions(id)
+----
+
+=== TSID node layout
+
+10-bit node field allows 1024 nodes × 4096 IDs/ms.  The node ID is read from
+the `TSID_NODE` environment variable (0–1023, default 0).  In a multi-instance
+deployment each node **must** be assigned a unique value.
+
+=== Transactional guarantees
+
+|===
+|Write |JTA transaction |Survives handler rollback?
+
+|BTX STARTED
+|`REQUIRES_NEW`
+|✓ always
+
+|Handler work
+|`REQUIRED` (joins outer)
+|n/a
+
+|BTX COMPLETED / FAILED
+|`REQUIRES_NEW`
+|✓ always
+|===
+
+=== Async execution
+
+Commands are dispatched via Jakarta Concurrency 3.1.  A named
+`@ManagedExecutorDefinition(virtual = true)` executor (`KeyServerCommandExecutor`)
+runs each command on a dedicated virtual thread.  The CDI request scope is
+propagated, making `@RequestScoped BusinessTransactionContext` (which carries the
+current `btxId`) available throughout the call stack with no parameter passing.
+
+JAX-RS endpoints return `CompletionStage<Response>` and chain on the returned
+`CompletableFuture<KeyServerCommandResponse>`.
+
+== 11. Current state
 
 This repository has a promising structure but is not yet functionally complete.
 Treat this document as an orientation guide, not a stable architecture promise.
