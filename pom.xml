@@ -37,12 +37,12 @@
 
     <!-- 3rd party dependencies -->
     <immutables-value.version>2.10.0</immutables-value.version>
-    <bouncycastle.version>1.81</bouncycastle.version>
+    <bouncycastle.version>1.84</bouncycastle.version>
     <hypersistence-tsid.version>2.1.4</hypersistence-tsid.version>
 
     <!-- plugin dependencies -->
-    <palantir-java-format.version>2.90.0</palantir-java-format.version>
-    <flyway.version>11.11.1</flyway.version>
+    <palantir-java-format.version>2.91.0</palantir-java-format.version>
+    <flyway.version>12.6.2</flyway.version>
   </properties>
 
   <dependencyManagement>
@@ -102,7 +102,7 @@
       <dependency>
         <groupId>ch.qos.logback</groupId>
         <artifactId>logback-classic</artifactId>
-        <version>1.5.18</version>
+        <version>1.5.32</version>
         <scope>test</scope>
       </dependency>
       <dependency>
@@ -201,19 +201,19 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-compiler-plugin</artifactId>
-          <version>3.14.0</version>
+          <version>3.15.0</version>
         </plugin>
 
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-enforcer-plugin</artifactId>
-          <version>3.6.1</version>
+          <version>3.6.3</version>
         </plugin>
 
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-failsafe-plugin</artifactId>
-          <version>3.5.3</version>
+          <version>3.5.5</version>
         </plugin>
 
         <plugin>
@@ -225,25 +225,25 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-jar-plugin</artifactId>
-          <version>3.4.2</version>
+          <version>3.5.0</version>
         </plugin>
 
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-resources-plugin</artifactId>
-          <version>3.3.1</version>
+          <version>3.5.0</version>
         </plugin>
 
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-surefire-plugin</artifactId>
-          <version>3.5.3</version>
+          <version>3.5.5</version>
         </plugin>
 
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-war-plugin</artifactId>
-          <version>3.4.0</version>
+          <version>3.5.1</version>
           <configuration>
             <failOnMissingWebXml>false</failOnMissingWebXml>
           </configuration>
@@ -253,18 +253,18 @@
         <plugin>
           <groupId>org.jacoco</groupId>
           <artifactId>jacoco-maven-plugin</artifactId>
-          <version>0.8.13</version>
+          <version>0.8.14</version>
         </plugin>
         <plugin>
           <groupId>com.diffplug.spotless</groupId>
           <artifactId>spotless-maven-plugin</artifactId>
-          <version>2.46.1</version>
+          <version>3.5.1</version>
         </plugin>
 
         <plugin>
           <groupId>io.openliberty.tools</groupId>
           <artifactId>liberty-maven-plugin</artifactId>
-          <version>3.11.4</version>
+          <version>3.12.0</version>
         </plugin>
       </plugins>
     </pluginManagement>
@@ -344,7 +344,6 @@
           <java>
             <importOrder />
             <removeUnusedImports />
-            <formatAnnotations />
 
             <licenseHeader>
               <file>${maven.multiModuleProjectDirectory}/build/apache-2.0-license-header.txt</file>

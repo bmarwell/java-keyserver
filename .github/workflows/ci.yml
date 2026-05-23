@@ -16,12 +16,12 @@ jobs:
     steps:
 
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           show-progress: false
 
       - name: Cache local Maven Build Cache
-        uses: actions/cache@v4.2.4
+        uses: actions/cache@v5
         if: ${{ github.ref_name != 'main' }}
         with:
           path: ~/.m2/build-cache
@@ -47,6 +47,6 @@ jobs:
           -Dspotless.skip=true
 
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v5.5.0
+        uses: codecov/codecov-action@v6
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
