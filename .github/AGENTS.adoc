@@ -78,8 +78,11 @@ Every mutating command is wrapped in a BTX lifecycle:
 
 * `KeyServerCommandService` carries `@ManagedExecutorDefinition(virtual = true)` and
   dispatches via `@Asynchronous(executor = "java:app/concurrent/KeyServerCommandExecutor")`.
-* Returns `CompletableFuture<KeyServerCommandResponse>` — callers chain with `thenApply`.
-* JAX-RS endpoints return `CompletionStage<Response>`.
+* `CommandService.handleCommand()` is `void` — it submits the command to the virtual-thread
+  executor and returns immediately.  Callers (JAX-RS endpoints) get back `Response.accepted()`
+  without waiting.  Exceptions are caught inside the async body, recorded as `FAILED`, and logged.
+* `@Asynchronous` is on the `void` method; the CDI interceptor makes the invocation non-blocking.
+  JAX-RS endpoints stay plain synchronous `Response` — no `CompletionStage` in method signatures.
 * Jakarta Concurrency 3.1 propagates CDI request scope to virtual threads — `@RequestScoped`
   beans (including `BusinessTransactionContext`) are safe to inject in handler classes.
 

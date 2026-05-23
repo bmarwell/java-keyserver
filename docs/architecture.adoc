@@ -202,8 +202,9 @@ runs each command on a dedicated virtual thread.  The CDI request scope is
 propagated, making `@RequestScoped BusinessTransactionContext` (which carries the
 current `btxId`) available throughout the call stack with no parameter passing.
 
-JAX-RS endpoints return `CompletionStage<Response>` and chain on the returned
-`CompletableFuture<KeyServerCommandResponse>`.
+JAX-RS endpoints call `commandService.handleCommand(command)` synchronously and
+return `Response.accepted()` immediately — the async work happens inside the executor
+without the HTTP thread waiting for it.
 
 == 11. Current state
 

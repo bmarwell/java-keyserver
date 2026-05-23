@@ -17,7 +17,6 @@ package io.github.bmarwell.keyserver.application.core;
 
 import io.github.bmarwell.keyserver.application.api.CommandService;
 import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommand;
-import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommandResponse;
 import io.github.bmarwell.keyserver.application.core.cmdhandler.CommandHandler;
 import io.github.bmarwell.keyserver.application.core.concurrent.BusinessTransactionContext;
 import io.github.bmarwell.keyserver.application.port.repository.BusinessTransactionRepository;
@@ -31,7 +30,6 @@ import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import java.io.Serializable;
-import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -57,7 +55,7 @@ import java.util.logging.Logger;
 /// 4. The command handler runs inside a `@Transactional` boundary.
 /// 5. On success the BTX row is updated to `COMPLETED` (also `REQUIRES_NEW`).
 /// 6. On any exception the BTX row is updated to `FAILED` (`REQUIRES_NEW`) and
-///    the exception is re-thrown so the `CompletableFuture` completes exceptionally.
+///    the exception is logged.  It does NOT propagate back — the caller fired and forgot.
 @ManagedExecutorDefinition(name = "java:app/concurrent/KeyServerCommandExecutor", virtual = true, maxAsync = -1)
 @Default
 @ApplicationScoped
@@ -80,7 +78,7 @@ public class KeyServerCommandService implements CommandService, Serializable {
 
     @Asynchronous(executor = "java:app/concurrent/KeyServerCommandExecutor")
     @Override
-    public <T extends KeyServerCommand> CompletableFuture<KeyServerCommandResponse> handleCommand(T keyServerCommand) {
+    public <T extends KeyServerCommand> void handleCommand(T keyServerCommand) {
         long btxId = tsidFactory.generate().toLong();
         String commandType = keyServerCommand.getClass().getSimpleName();
 
@@ -88,28 +86,26 @@ public class KeyServerCommandService implements CommandService, Serializable {
         btxContext.initialize(btxId);
 
         try {
-            KeyServerCommandResponse response = dispatch(keyServerCommand);
+            dispatch(keyServerCommand);
             btxRepository.recordCompleted(btxId);
-            return CompletableFuture.completedFuture(response);
         } catch (Exception ex) {
             btxRepository.recordFailed(btxId);
             LOG.log(Level.WARNING, "Command {0} failed for BTX {1}: {2}", new Object[] {
                 commandType, btxId, ex.getMessage()
             });
-            return CompletableFuture.failedFuture(ex);
         }
     }
 
     @Transactional
     @SuppressWarnings("unchecked")
-    private <T extends KeyServerCommand> KeyServerCommandResponse dispatch(T command) {
+    private <T extends KeyServerCommand> void dispatch(T command) {
         CommandHandler<T> handler = (CommandHandler<T>) commandHandlers.stream()
                 .filter(ch -> ch.canHandle(command))
                 .findFirst()
                 .orElseThrow(() -> new UnsupportedOperationException(
                         "No CommandHandler for: " + command.getClass().getName()));
 
-        return handler.execute(command);
+        handler.execute(command);
     }
 
     // CDI-friendly setters for testing

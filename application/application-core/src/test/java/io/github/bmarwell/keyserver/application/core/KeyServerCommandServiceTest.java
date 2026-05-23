@@ -15,45 +15,57 @@
  */
 package io.github.bmarwell.keyserver.application.core;
 
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommand;
 import io.github.bmarwell.keyserver.application.core.concurrent.BusinessTransactionContext;
 import io.github.bmarwell.keyserver.application.port.repository.BusinessTransactionRepository;
 import io.github.bmarwell.keyserver.test.utils.cdi.SimpleInstance;
 import io.hypersistence.tsid.TSID;
-import java.util.concurrent.CompletionException;
 import org.junit.jupiter.api.Test;
 
 class KeyServerCommandServiceTest {
 
     @Test
-    void throws_on_unknown_command_type() {
+    void records_failed_on_unknown_command_type() {
         // given:
         var noopCommand = new KeyServerCommand() {};
+        var trackingRepo = new TrackingBusinessTransactionRepository();
 
         KeyServerCommandService service = new KeyServerCommandService();
         service.setCommandHandlers(SimpleInstance.empty());
-        service.setBtxRepository(new NoopBusinessTransactionRepository());
+        service.setBtxRepository(trackingRepo);
         service.setBtxContext(new BusinessTransactionContext());
         service.setTsidFactory(
                 TSID.Factory.builder().withNodeBits(10).withNode(0).build());
 
-        // expect: the future completes exceptionally
-        var future = service.handleCommand(noopCommand);
-        assertThatThrownBy(future::join)
-                .isInstanceOf(CompletionException.class)
-                .hasCauseInstanceOf(UnsupportedOperationException.class);
+        // when: @Asynchronous is not intercepted in unit tests — runs synchronously
+        service.handleCommand(noopCommand);
+
+        // then: BTX was started and then recorded as failed
+        assertThat(trackingRepo.startedCount).isEqualTo(1);
+        assertThat(trackingRepo.failedCount).isEqualTo(1);
+        assertThat(trackingRepo.completedCount).isZero();
     }
 
-    private static final class NoopBusinessTransactionRepository implements BusinessTransactionRepository {
-        @Override
-        public void recordStarted(long btxId, String commandType, String callerIp) {}
+    private static final class TrackingBusinessTransactionRepository implements BusinessTransactionRepository {
+        int startedCount;
+        int completedCount;
+        int failedCount;
 
         @Override
-        public void recordCompleted(long btxId) {}
+        public void recordStarted(long btxId, String commandType, String callerIp) {
+            startedCount++;
+        }
 
         @Override
-        public void recordFailed(long btxId) {}
+        public void recordCompleted(long btxId) {
+            completedCount++;
+        }
+
+        @Override
+        public void recordFailed(long btxId) {
+            failedCount++;
+        }
     }
 }
