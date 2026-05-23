@@ -1,0 +1,98 @@
+= Java Keyserver — short architecture snapshot
+:toc:
+:toclevels: 2
+
+This is a compact ARC42-style snapshot of the repository as it stands today.
+It is intentionally brief because the codebase is still evolving.
+
+== 1. Introduction and goals
+
+The project aims to provide a PGP/GnuPG keyserver in Java with separate web
+surfaces for the OpenPGP PKS protocol and a REST API. The intended operating
+modes are local, syncing, mirror, and group-based lookup.
+
+== 2. Constraints
+
+* Jakarta EE is the main application model: CDI, JAX-RS, JPA, and JTA.
+* Open Liberty is the runtime target for the web modules.
+* PostgreSQL is used for persistence, with Flyway-managed schema changes.
+* Bouncy Castle handles OpenPGP parsing and key handling.
+
+== 3. Solution strategy
+
+The code follows a layered, ports-and-adapters style:
+
+* `application-api` defines commands, queries, and service contracts.
+* `application-core` routes commands to handlers and orchestrates use cases.
+* `application-ports` defines repository and mail ports.
+* `repository` and `mail` implement the outbound adapters.
+* `web/*` contains protocol-specific inbound adapters.
+
+The command side uses a CQRS-like split: endpoints translate HTTP requests into
+commands, handlers perform the work, and repository/mail ports hide persistence
+and notification details.
+
+== 4. Building blocks
+
+|===
+|Module |Role |Notes
+
+|`common/ids`
+|Value objects
+|Repository names, key IDs, and OpenPGP-related identifiers.
+
+|`application-api`
+|Contracts
+|Commands, response marker types, and service interfaces.
+
+|`application-core`
+|Use-case orchestration
+|Command dispatch plus repository-facing services.
+
+|`repository`
+|Persistence adapter
+|JPA/Flyway-backed storage for key data and verification queues.
+
+|`mail`
+|Notification adapter
+|SMTP-facing mail implementation.
+
+|`web/openpgp-keyserver-protocol`
+|PKS endpoint
+|Protocol-oriented add/lookup entry points.
+
+|`web/rest`
+|REST endpoint
+|Administrative/API-style surface.
+|===
+
+== 5. Runtime view
+
+Request flow is intended to look like this:
+
+`HTTP endpoint -> command/query -> application service -> handler -> port -> adapter -> database or mail`
+
+For lookup use cases, the flow is shorter:
+
+`HTTP endpoint -> repository service -> persisted key data`
+
+== 6. Weak spots
+
+* Many end-to-end flows are still stubs or return `501/503`.
+* Command dispatch is runtime-based (`canHandle`) rather than compile-time safe.
+* Validation, persistence, and response rendering are incomplete.
+* The current tests mostly cover dispatch behavior, not the protocol flows.
+* Some helper and adapter types are only partially implemented.
+
+== 7. Where the design fits well
+
+* The module split is clear and keeps protocol, use case, and storage concerns apart.
+* CQRS/command handling matches the PKS add-vs-lookup shape well.
+* Value objects reduce stringly-typed plumbing.
+* The ports/adapters boundary should make future storage or mail replacements easy.
+* Flyway plus JPA is a sensible fit for repository metadata and queue state.
+
+== 8. Current state
+
+This repository has a promising structure but is not yet functionally complete.
+Treat this document as an orientation guide, not a stable architecture promise.
