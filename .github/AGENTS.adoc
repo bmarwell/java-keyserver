@@ -1,0 +1,41 @@
+= Agent guidance for Java Keyserver
+
+This repository implements a PGP/GnuPG keyserver in Java. Keep changes small,
+fit them into the existing module split, and prefer the current conventions over
+inventing new ones.
+
+== Working style
+
+* For any non-trivial task, plan first before editing code.
+* If an approach starts to drift or get messy, stop and re-plan.
+* Use subagents for independent research or parallel analysis when it helps.
+* Keep unrelated refactors out of feature work.
+
+== Architecture defaults
+
+* Respect the module boundaries: `common/ids`, `application-api`,
+  `application-core`, `application-ports`, `repository`, `mail`, and `web/*`.
+* Use Jakarta EE patterns already present in the codebase: CDI, JAX-RS, JPA,
+  and JTA.
+* Keep web resources thin; route behavior through commands, services, and
+  adapters.
+* Treat repository and mail code as outbound adapters behind ports.
+
+== Change discipline
+
+* Prefer the simplest correct solution.
+* Do not add temporary hacks or broad fallbacks.
+* Keep names, formatting, and package structure consistent with nearby code.
+* Avoid mixing docs, refactors, and behavior changes unless the task needs it.
+
+== Verification
+
+* Run the relevant existing build or test commands for touched modules.
+* Check the diff before finishing.
+* Do not claim completion without evidence that the change works.
+
+== Documentation
+
+* Prefer AsciiDoc for repository docs.
+* Keep architecture notes short and current-state focused.
+* Do not spend doc space on version lists or plugin details.
