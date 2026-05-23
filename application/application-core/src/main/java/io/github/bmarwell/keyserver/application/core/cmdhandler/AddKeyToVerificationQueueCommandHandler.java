@@ -49,9 +49,9 @@ import org.bouncycastle.openpgp.operator.bc.BcKeyFingerprintCalculator;
 /// 1. Parses the ASCII-armored key text with Bouncycastle.
 /// 2. For each key ring in the submission, locates the master key.
 /// 3. Rejects keys that are revoked (has a direct-key revocation signature).
-/// 4. Collects only the UIDs that contain an RFC-5322 email address (the
-///    `<addr>` part inside angle brackets, or the bare address if no angle
-///    brackets are present).
+/// 4. Collects only the UIDs that contain an email address (heuristic: must
+///    have exactly one `@`, no whitespace or control characters; the full
+///    `<local@domain>` form inside angle brackets is also supported).
 /// 5. Throws {@link NoVerifiableUidException} if no email-bearing UID survives.
 /// 6. Enqueues one {@link VerificationRequest} per surviving UID via the
 ///    {@link VerificationQueueRepository} port.  The TSID returned by the
@@ -63,6 +63,13 @@ import org.bouncycastle.openpgp.operator.bc.BcKeyFingerprintCalculator;
 ///
 /// Tokens expire after {@value #TOKEN_TTL_HOURS} hours by default.  A future
 /// iteration will make this configurable via MicroProfile Config.
+///
+/// ## anonymizedClientIp
+///
+/// The command carries the pre-anonymized client IP for audit purposes.
+/// It is not persisted here — it will be written to the BTX audit row once
+/// `BusinessTransactionRepository.recordStarted()` is extended to accept
+/// optional metadata (see implementation-plan §7.5).
 @RequestScoped
 public class AddKeyToVerificationQueueCommandHandler
         extends AbstractKeyServerCommandHandler<AddKeyToVerificationQueueCommand> {
@@ -82,6 +89,10 @@ public class AddKeyToVerificationQueueCommandHandler
 
     @Override
     KeyServerCommandResponse doExecute(AddKeyToVerificationQueueCommand command) {
+        if (command.keyText() == null || command.keyText().isBlank()) {
+            throw new KeyParsingException("keytext must not be null or blank");
+        }
+
         PGPPublicKeyRingCollection keyRingCollection = parseKeyText(command.keyText());
 
         if (!keyRingCollection.iterator().hasNext()) {
@@ -167,8 +178,18 @@ public class AddKeyToVerificationQueueCommandHandler
     }
 
     private boolean isValidEmail(String candidate) {
+        if (candidate == null || candidate.isEmpty()) {
+            return false;
+        }
+        // Reject any whitespace or control characters to prevent log injection.
+        for (int i = 0; i < candidate.length(); i++) {
+            char c = candidate.charAt(i);
+            if (c <= ' ' || c == 127) {
+                return false;
+            }
+        }
         int at = candidate.indexOf('@');
-        return at > 0 && at < candidate.length() - 1 && !candidate.contains(" ");
+        return at > 0 && at == candidate.lastIndexOf('@') && at < candidate.length() - 1;
     }
 
     private String fingerprintHex(PGPPublicKey key) {

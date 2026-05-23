@@ -95,6 +95,13 @@
         <scope>provided</scope>
       </dependency>
 
+      <dependency>
+        <groupId>jakarta.servlet</groupId>
+        <artifactId>jakarta.servlet-api</artifactId>
+        <version>6.1.0</version>
+        <scope>provided</scope>
+      </dependency>
+
       <!-- MicroProfile 7.1 -->
       <dependency>
         <groupId>org.eclipse.microprofile.openapi</groupId>

@@ -19,15 +19,14 @@ import io.github.bmarwell.keyserver.application.api.CommandService;
 import io.github.bmarwell.keyserver.application.api.commands.AddKeyToVerificationQueueCommand;
 import io.github.bmarwell.keyserver.common.ids.IpAnonymizer;
 import jakarta.inject.Inject;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.FormParam;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
-import jakarta.ws.rs.core.Request;
 import jakarta.ws.rs.core.Response;
-import jakarta.ws.rs.core.UriInfo;
 import org.eclipse.microprofile.openapi.annotations.parameters.RequestBody;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 
@@ -39,20 +38,24 @@ public class AddEndpoint {
     CommandService commandService;
 
     @Context
-    UriInfo uriInfo;
+    HttpServletRequest httpServletRequest;
 
     /// Accepts a PGP public key submitted as an HTML form post.
     ///
     /// The `keytext` parameter must contain an ASCII-armored public key block.
     /// The client IP is anonymized (last IPv4 octet / last 80 IPv6 bits zeroed)
-    /// before it is stored anywhere.
+    /// before it is stored anywhere.  `HttpServletRequest.getRemoteAddr()` provides
+    /// the direct TCP peer address; when the server sits behind a reverse proxy the
+    /// `Forwarded` / `X-Forwarded-For` headers should be validated and stripped by the
+    /// proxy tier — this endpoint does **not** trust those headers directly to avoid
+    /// IP-spoofing via forged headers.
     ///
     /// The command is dispatched asynchronously; this method returns `202 Accepted`
     /// immediately.  The caller should not assume the key is visible yet.
     @POST
     @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
-    public Response addKey(@RequestBody @FormParam("keytext") String keyText, @Context Request request) {
-        String rawIp = uriInfo.getRequestUri().getHost();
+    public Response addKey(@RequestBody @FormParam("keytext") String keyText) {
+        String rawIp = httpServletRequest.getRemoteAddr();
         String anonymizedIp = IpAnonymizer.anonymize(rawIp);
         var command = new AddKeyToVerificationQueueCommand(keyText, anonymizedIp);
         commandService.handleCommand(command);

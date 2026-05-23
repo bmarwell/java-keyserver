@@ -37,6 +37,11 @@ public class LoggingVerificationNotificationAdapter implements VerificationNotif
 
     @Override
     public void notifyPendingVerification(String toEmail, String fingerprint, URI verificationUri) {
+        // NOTE: The full verification URI (which acts as a bearer token) is logged here.
+        // This is intentional for the first iteration where no SMTP transport is configured
+        // and operators need to retrieve the link from logs to complete testing.
+        // TODO: Once SMTP is wired, either remove this adapter or downgrade to FINE / DEBUG
+        //       so that the token is not visible in production logs.  See implementation-plan §8.
         LOG.info(() ->
                 ("Verification pending for <%s> key %s — visit: %s").formatted(toEmail, fingerprint, verificationUri));
     }

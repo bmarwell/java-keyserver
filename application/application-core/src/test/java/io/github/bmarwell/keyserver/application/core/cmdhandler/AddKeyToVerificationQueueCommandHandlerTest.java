@@ -107,6 +107,22 @@ class AddKeyToVerificationQueueCommandHandlerTest {
     }
 
     @Test
+    void rejects_null_key_text() {
+        var command = new AddKeyToVerificationQueueCommand(null, "10.0.0.0");
+
+        assertThatThrownBy(() -> handler.doExecute(command)).isInstanceOf(KeyParsingException.class);
+        assertThat(fakeRepo.received).isEmpty();
+    }
+
+    @Test
+    void rejects_blank_key_text() {
+        var command = new AddKeyToVerificationQueueCommand("   ", "10.0.0.0");
+
+        assertThatThrownBy(() -> handler.doExecute(command)).isInstanceOf(KeyParsingException.class);
+        assertThat(fakeRepo.received).isEmpty();
+    }
+
+    @Test
     void rejects_garbage_key_text() {
         var command = new AddKeyToVerificationQueueCommand("not a pgp key", "10.0.0.0");
 
