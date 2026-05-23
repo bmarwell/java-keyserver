@@ -15,4 +15,10 @@
  */
 package io.github.bmarwell.keyserver.application.api.commands;
 
-public interface KeyServerCommandResponse {}
+public interface KeyServerCommandResponse {
+    record Success() implements KeyServerCommandResponse {}
+
+    static KeyServerCommandResponse success() {
+        return new Success();
+    }
+}
