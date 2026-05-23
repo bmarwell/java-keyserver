@@ -1,0 +1,498 @@
+= Implementation Plan
+:toc:
+:toclevels: 3
+
+This document captures the planned work to make the keyserver functionally
+compliant with the HKP protocol (the protocol GnuPG uses by default).
+It covers protocol requirements, database schema, exception handling, transaction
+discipline, and the specific changes needed in each module.
+
+== 1. HKP Protocol Requirements
+
+The HTTP Keyserver Protocol (HKP, informally standardized by SKS/GnuPG interoperability
+and recently captured in IETF draft-gallagher-openpgp-hkp) requires three operations.
+
+=== 1.1 Lookup (`GET /pks/lookup`)
+
+Required query parameters:
+
+[cols="1,1,3"]
+|===
+|Parameter |Values |Notes
+
+|`op`
+|`get`, `index`, `vindex`
+|`get` returns armored key data; `index`/`vindex` return listing
+
+|`search`
+|`0x<keyid>`, `0x<fingerprint>`, email, or arbitrary string
+|Must accept short (8 hex) and long (16 hex) key IDs, v4/v5 fingerprints,
+and email addresses.
+
+|`options`
+|`mr` (machine-readable)
+|When set, `index`/`vindex` must return the `info:1:N` text format.
+
+|`exact`
+|`on`
+|When set, no substring matching — only exact fingerprint/key-ID/email matches.
+|===
+
+The `op=get` response must be `Content-Type: application/pgp-keys` with
+an ASCII-armored public-key block (`BEGIN PGP PUBLIC KEY BLOCK`).
+
+The `op=index` machine-readable format:
+
+----
+info:1:<N>
+pub:<fingerprint>:<algo>:<keylen>:<ctime>:<exptime>:<flags>
+uid:<escaped-uid>:<ctime>:<exptime>:<flags>
+----
+
+Flags include `r` (revoked), `d` (disabled), `e` (expired).
+
+=== 1.2 Add (`POST /pks/add`)
+
+The request body is `application/x-www-form-urlencoded` with a single field:
+
+----
+keytext=<url-encoded ASCII-armored public key block>
+----
+
+NOTE: The current `AddEndpoint` reads a raw `InputStream`.  It must be changed
+to decode a form parameter named `keytext`.
+
+The success response is HTTP 200 with a plain-text confirmation body.
+On failure, HTTP 4xx with a plain-text error message.
+
+=== 1.3 Commands Needed
+
+[cols="1,2"]
+|===
+|Command |Trigger
+
+|`AddKeyToVerificationQueueCommand`
+|`POST /pks/add` — already exists, must be completed.
+
+|`VerifyUidCommand`
+|Email link click — verifies one UID and promotes key to published state.
+
+|`LookupKeyByIdCommand` (or query)
+|`GET /pks/lookup?op=get` — lookup by key ID or fingerprint.
+
+|`IndexKeyCommand` (or query)
+|`GET /pks/lookup?op=index` — listing format.
+
+|`RevokeKeyCommand`
+|Future: via signed revocation certificate upload.
+|===
+
+NOTE: `Lookup` and `Index` are read-only queries without side effects.  Consider
+introducing a symmetric `QueryService` / `KeyServerQuery` hierarchy so they do
+not go through the command path and require no `@Transactional` write.
+
+== 2. Fields to Extract and Store
+
+=== 2.1 Keys Table (expand existing `keys`)
+
+The existing `keys` table only has `rfingerprint`, `ctime`, `mtime`, `md5`.
+It must be expanded to hold everything needed for lookup responses and
+machine-readable output.
+
+[cols="1,1,3"]
+|===
+|Column |Type |Notes
+
+|`fingerprint`
+|`TEXT NOT NULL PRIMARY KEY`
+|Full hex fingerprint (40 chars v4, 64 chars v5). Replace `rfingerprint` as
+primary key; keep `rfingerprint` as indexed column for suffix-search.
+
+|`rfingerprint`
+|`TEXT NOT NULL`
+|Reversed fingerprint for suffix search (kept for compatibility with SKS
+indexing style).
+
+|`keyid_long`
+|`TEXT NOT NULL`
+|Last 16 hex chars of fingerprint.
+
+|`version`
+|`INTEGER NOT NULL`
+|OpenPGP key version: 4 or 5.
+
+|`algorithm`
+|`INTEGER NOT NULL`
+|OpenPGP algorithm tag (e.g., 22 = Ed25519, 1 = RSA).
+
+|`bit_strength`
+|`INTEGER`
+|Bit length for RSA/DSA; null for fixed-length ECC.
+
+|`creation_time`
+|`TIMESTAMP WITH TIME ZONE NOT NULL`
+|From the key packet.
+
+|`expiration_time`
+|`TIMESTAMP WITH TIME ZONE`
+|Null if the key does not expire.
+
+|`revoked`
+|`BOOLEAN NOT NULL DEFAULT FALSE`
+|Set when a revocation certificate is processed.
+
+|`armored_key`
+|`TEXT NOT NULL`
+|Full ASCII-armored public key block for `op=get` responses.
+
+|`md5`
+|`TEXT NOT NULL UNIQUE`
+|MD5 of the armored key (already present — retain for compatibility).
+
+|`ctime`
+|`TIMESTAMP WITH TIME ZONE NOT NULL`
+|Row creation time (server-side).
+
+|`mtime`
+|`TIMESTAMP WITH TIME ZONE NOT NULL`
+|Row last-modified time (server-side).
+|===
+
+=== 2.2 UIDs Table (new)
+
+One row per OpenPGP User ID bound to a key.
+
+[cols="1,1,3"]
+|===
+|Column |Type |Notes
+
+|`id`
+|`BIGSERIAL PRIMARY KEY`
+|Surrogate key.
+
+|`fingerprint`
+|`TEXT NOT NULL REFERENCES keys(fingerprint)`
+|FK to the primary key.
+
+|`uid_raw`
+|`TEXT NOT NULL`
+|The raw UID string as it appears in the key packet (e.g., `Alice <alice@example.org>`).
+
+|`uid_name`
+|`TEXT`
+|Parsed name component (may be null for non-RFC 2822 UIDs).
+
+|`uid_email`
+|`TEXT`
+|Parsed email component; null if no email.  Used for email-based search.
+
+|`creation_time`
+|`TIMESTAMP WITH TIME ZONE`
+|From the UID self-signature.
+
+|`expiration_time`
+|`TIMESTAMP WITH TIME ZONE`
+|From the UID self-signature.
+
+|`revoked`
+|`BOOLEAN NOT NULL DEFAULT FALSE`
+|True if a revocation signature covers this UID.
+
+|`verified`
+|`BOOLEAN NOT NULL DEFAULT FALSE`
+|True after the verification email link has been clicked.
+|===
+
+=== 2.3 Verification Queue Table (replace current stub)
+
+[cols="1,1,3"]
+|===
+|Column |Type |Notes
+
+|`id`
+|`UUID PRIMARY KEY DEFAULT gen_random_uuid()`
+|Opaque verification token sent to the user by email.
+
+|`fingerprint`
+|`TEXT NOT NULL`
+|Fingerprint of the key being verified.
+
+|`uid_raw`
+|`TEXT NOT NULL`
+|The specific UID being verified (one row per UID per upload).
+
+|`uid_email`
+|`TEXT NOT NULL`
+|The email address that will receive the verification mail.
+
+|`armored_key`
+|`TEXT NOT NULL`
+|Full armored key stored here until at least one UID is verified.
+
+|`created_at`
+|`TIMESTAMP WITH TIME ZONE NOT NULL`
+|Row creation time.
+
+|`expires_at`
+|`TIMESTAMP WITH TIME ZONE NOT NULL`
+|Verification link expiry (e.g., 72 h from creation).
+
+|`state`
+|`TEXT NOT NULL DEFAULT 'PENDING'`
+|One of `PENDING`, `VERIFIED`, `EXPIRED`, `REJECTED`.
+|===
+
+=== 2.4 Audit Log Table (new)
+
+[cols="1,1,3"]
+|===
+|Column |Type |Notes
+
+|`id`
+|`BIGSERIAL PRIMARY KEY`
+|Surrogate key.
+
+|`command_type`
+|`TEXT NOT NULL`
+|Simple class name of the command (e.g., `AddKeyToVerificationQueueCommand`).
+
+|`fingerprint`
+|`TEXT`
+|Key fingerprint if it could be extracted; null otherwise.
+
+|`request_ip`
+|`TEXT`
+|Remote IP from the HTTP request.
+
+|`occurred_at`
+|`TIMESTAMP WITH TIME ZONE NOT NULL`
+|Timestamp the command was dispatched.
+
+|`result`
+|`TEXT NOT NULL`
+|`SUCCESS` or `FAILURE`.
+
+|`failure_type`
+|`TEXT`
+|Exception class name on failure.
+
+|`failure_message`
+|`TEXT`
+|Exception message on failure (never a stack trace).
+|===
+
+== 3. Exception Hierarchy
+
+All domain exceptions should live in `application/application-api`.
+They extend `RuntimeException` so they cross CDI method boundaries without
+checked-exception declarations.
+
+=== 3.1 Base Class
+
+[source,java]
+----
+// package io.github.bmarwell.keyserver.application.api.ex;
+public abstract class KeyServerException extends RuntimeException {
+
+    private final Optional<KeyFingerprint> fingerprint;
+    private final String correlationId;  // UUID, set by CommandService
+
+    protected KeyServerException(String message, Optional<KeyFingerprint> fingerprint,
+                                  String correlationId) { ... }
+    protected KeyServerException(String message, Throwable cause,
+                                  Optional<KeyFingerprint> fingerprint,
+                                  String correlationId) { ... }
+
+    public Optional<KeyFingerprint> getFingerprint() { ... }
+    public String getCorrelationId() { ... }
+}
+----
+
+=== 3.2 Hierarchy
+
+----
+KeyServerException  (abstract, application-api)
+├── KeyParsingException          — armored input could not be decoded
+├── KeyValidationException       — key is syntactically valid but rejected
+│   ├── KeyExpiredException      — primary key or all UIDs expired
+│   ├── KeyRevokedException      — primary key carries a revocation signature
+│   ├── NoVerifiableUidException — no UID has an email address
+│   └── InvalidAlgorithmException — algorithm not accepted by this server
+├── KeyNotFoundException         — no key matching the search criteria
+├── DuplicateKeyException        — fingerprint already published (idempotent add
+│                                  should return 200, not throw — design choice)
+└── VerificationException        — problems with the email-verify flow
+    ├── TokenExpiredException
+    └── TokenInvalidException
+----
+
+NOTE: `DuplicateKeyException` may be handled silently (200 OK, re-send verification
+mail) rather than thrown to the endpoint.  Decide at implementation time; plan
+for the exception regardless.
+
+=== 3.3 Placement
+
+* `KeyServerException` and all subclasses → `application/application-api`
+  (`io.github.bmarwell.keyserver.application.api.ex`)
+* `InvalidKeyIdException` in `common/ids` stays there — it is a value-object
+  parsing error, not a business error.
+
+== 4. Exception Mappers
+
+JAX-RS `ExceptionMapper` implementations belong in the web modules
+(`web/openpgp-keyserver-protocol` and/or `web/rest`).
+
+[cols="1,1,2"]
+|===
+|Exception |HTTP Status |Body
+
+|`KeyNotFoundException`
+|404 Not Found
+|Plain-text `"No key found for <search>"`
+
+|`KeyParsingException`
+|400 Bad Request
+|Plain-text error message
+
+|`KeyValidationException` and subtypes
+|400 Bad Request
+|Plain-text error message (include reason: expired, revoked, etc.)
+
+|`DuplicateKeyException`
+|200 OK
+|Plain-text confirmation (idempotent add)
+
+|`VerificationException` subtypes
+|400 Bad Request
+|Plain-text reason
+
+|`KeyServerException` (catch-all)
+|500 Internal Server Error
+|Generic plain-text; log full details server-side only
+|===
+
+Each mapper must:
+
+1. Log the exception at the appropriate level (WARN for 4xx, ERROR for 5xx).
+2. Include the `correlationId` from the exception in the response header
+   (`X-Correlation-ID`) so callers can reference it in support requests.
+3. Never expose stack traces in the response body.
+
+== 5. Transaction Strategy
+
+=== 5.1 Current State
+
+`PersistentKeyQueueRepositoryService` carries `@Transactional`.  The command
+handlers and `KeyServerCommandService` do not.  This means the boundary is too
+low: only the DAO call is in a transaction, not the full parse-validate-persist
+flow.
+
+=== 5.2 Target State
+
+`KeyServerCommandService.handleCommand()` should be annotated `@Transactional`
+so the entire command lifecycle (parse, validate, persist, enqueue) is one atomic
+unit.
+
+* On success: the DAO write and the audit log entry commit together.
+* On failure: the main transaction rolls back, but the audit log write should
+  succeed.  Use a _separate_ transaction for the audit log entry
+  (`@Transactional(Transactional.TxType.REQUIRES_NEW)` on an `AuditLogService`).
+
+The `PersistentKeyQueueRepositoryService` can keep its `@Transactional` as a
+safety net but becomes effectively `MANDATORY` (the transaction is already open).
+
+=== 5.3 Audit Log Integration
+
+The `CommandService` should inject an `AuditLogService` and wrap every handler
+invocation:
+
+[source,java]
+----
+try {
+    result = handler.execute(command);
+    auditLogService.recordSuccess(command, correlationId, fingerprint);
+} catch (KeyServerException ex) {
+    auditLogService.recordFailure(command, correlationId, ex);
+    throw ex;
+}
+----
+
+`AuditLogService` (port in `application-ports`) is implemented by a JPA adapter
+in `repository`.  Its write always uses `REQUIRES_NEW` so it survives a rollback.
+
+== 6. What Needs to Change Per Module
+
+=== 6.1 `common/ids`
+
+* Add `KeyFingerprint` implementation that distinguishes v4 (20 bytes / 40 hex)
+  from v5 (32 bytes / 64 hex).
+* Enrich `PgpPublicKey` interface with:  `fingerprint()`, `keyId()`,
+  `algorithm()`, `bitStrength()`, `creationTime()`, `expirationTime()`,
+  `isRevoked()`, `userIds()` returning a list of a `PgpUserId` value type.
+
+=== 6.2 `application/application-api`
+
+* Add the full exception hierarchy under `ex/` (see §3).
+* Add `KeyServerQuery` marker interface parallel to `KeyServerCommand`.
+* Add `QueryService` interface parallel to `CommandService`.
+* Enrich `KeyServerCommandResponse` with a typed result so callers can extract
+  data without casting.
+
+=== 6.3 `application/application-core`
+
+* Annotate `KeyServerCommandService.handleCommand()` with `@Transactional`.
+* Inject `AuditLogService` and wrap handler calls (see §5.3).
+* Add `KeyServerQueryService` for read-only lookups (no `@Transactional` write
+  semantics needed — `@Transactional(READ_ONLY)` is sufficient).
+* Complete `AddKeyToVerificationQueueCommandHandler`:
+  - Parse armored input via Bouncy Castle.
+  - Validate: reject expired primary key, reject revoked primary key, drop UIDs
+    without email address, drop UIDs that are revoked or expired.
+  - For each remaining UID, enqueue a verification queue entry.
+  - Return a typed response indicating how many UIDs were queued.
+
+=== 6.4 `application/application-ports`
+
+* Add `AuditLogPort` (write audit entries).
+* Expand `KeyVerificationQueueDao` with richer parameters matching the new
+  schema.
+* Add `KeyDao` (replaces stub `KeyRepository`) with methods for fingerprint/
+  keyid lookup and insert.
+* Add `UidDao` for UID-level reads needed by `op=index`.
+
+=== 6.5 `repository`
+
+* Implement JPA entities for: `KeyEntity`, `UidEntity`, `VerificationQueueEntity`,
+  `AuditLogEntity`.
+* Implement DAOs.
+* Add Flyway migrations: `V003__expand-keys.sql`, `V004__create-uids.sql`,
+  `V005__create-verification-queue.sql`, `V006__create-audit-log.sql`.
+* Enable `gen_random_uuid()` (requires `pgcrypto` extension — add to migration).
+
+=== 6.6 `web/openpgp-keyserver-protocol`
+
+* `AddEndpoint`: accept `application/x-www-form-urlencoded`, read `keytext`
+  form parameter.
+* `LookupEndpoint`: implement `op=index` and `op=vindex` with
+  machine-readable output.  Honor `options=mr` and `exact=on`.
+* Add `KeyServerExceptionMapper` implementing `ExceptionMapper<KeyServerException>`.
+* Add `InvalidKeyIdExceptionMapper` for the `common/ids` parsing error.
+
+=== 6.7 `web/rest`
+
+* Add the same exception mappers (or extract to a shared `web-common` module).
+* Implement `KeyEndpoint` and `RepositoryEndpoint` stubs once the core flows
+  work.
+
+== 7. Open Questions / Design Decisions
+
+* *Idempotent add*: Should re-submitting an already-published fingerprint be
+  200 OK (re-send verification) or 409 Conflict?  Lean toward 200 + re-send to
+  align with key server user expectations.
+* *UID filtering*: PKS protocol historically publishes all UIDs.  The
+  Verifying Keyserver (VKS) model (keys.openpgp.org) only publishes verified
+  UIDs.  Choose one and document it.
+* *Algorithm allow-list*: Reject MD5-based v3 keys and DSA < 2048?  Plan for
+  a configurable allow-list.
+* *Synchronization*: Multi-keyserver sync is out of scope for now.  The
+  `RepositoryName` value object is in place but the sync protocol is not planned.
