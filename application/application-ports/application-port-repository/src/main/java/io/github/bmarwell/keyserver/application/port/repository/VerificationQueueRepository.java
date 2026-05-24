@@ -16,6 +16,7 @@
 package io.github.bmarwell.keyserver.application.port.repository;
 
 import java.time.OffsetDateTime;
+import java.util.Optional;
 
 /// Secondary (outbound) port for the verification queue.
 ///
@@ -32,9 +33,38 @@ public interface VerificationQueueRepository {
     record VerificationRequest(
             String fingerprint, String uidRaw, String uidEmail, String armoredKey, OffsetDateTime expiresAt) {}
 
+    /// Snapshot of a verification queue row returned to the application core.
+    ///
+    /// Only rows in state `PENDING` are returned by {@link #findPendingById}; the
+    /// application layer never sees `VERIFIED`, `EXPIRED`, or `REJECTED` entries
+    /// through this result type — the adapter returns {@link Optional#empty()} for
+    /// those states, which the handler maps to `TokenInvalidException`.
+    /// This prevents leaking whether a token ever existed to callers who probe
+    /// already-consumed links.
+    record VerificationEntry(
+            long id, String fingerprint, String uidRaw, String uidEmail, String armoredKey, OffsetDateTime expiresAt) {}
+
     /// Persists a single verification queue entry and returns its TSID.
     ///
     /// @param request the data for this queue entry
     /// @return the TSID (`BIGINT`) assigned to the new row
     long enqueue(VerificationRequest request);
+
+    /// Looks up a verification queue entry by token ID, returning it only if
+    /// its state is `PENDING`.
+    ///
+    /// Returns {@link Optional#empty()} when:
+    /// - no row exists for the given ID, or
+    /// - the row exists but is not in state `PENDING` (already VERIFIED, EXPIRED, or REJECTED).
+    ///
+    /// Callers must **not** distinguish the two empty cases — both yield
+    /// {@link io.github.bmarwell.keyserver.application.api.ex.TokenInvalidException}.
+    Optional<VerificationEntry> findPendingById(long tokenId);
+
+    /// Transitions a `PENDING` queue entry to `VERIFIED`.
+    ///
+    /// Called by the handler after expiry and existence checks pass, immediately
+    /// before the verified UID is published to the key store.  Implementations
+    /// must be idempotent with respect to concurrent calls for the same token.
+    void markVerified(long tokenId);
 }

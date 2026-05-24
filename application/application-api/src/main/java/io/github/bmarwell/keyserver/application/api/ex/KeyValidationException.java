@@ -21,7 +21,11 @@ import java.util.Optional;
 /// Base for exceptions raised when a key is structurally valid but fails
 /// business-level validation rules (expired, revoked, no usable UIDs, …).
 public abstract sealed class KeyValidationException extends KeyServerException
-        permits KeyExpiredException, KeyRevokedException, NoVerifiableUidException, InvalidAlgorithmException {
+        permits KeyExpiredException,
+                KeyRevokedException,
+                NoVerifiableUidException,
+                InvalidAlgorithmException,
+                TooManyVerifiableUidsException {
 
     protected KeyValidationException(String message, Optional<KeyFingerprint> fingerprint) {
         super(message, fingerprint);

@@ -157,8 +157,20 @@ public class KeyEntity {
         return armoredKey;
     }
 
+    public void setArmoredKey(String armoredKey) {
+        this.armoredKey = armoredKey;
+    }
+
+    public void setMtime(OffsetDateTime mtime) {
+        this.mtime = mtime;
+    }
+
     public String getMd5() {
         return md5;
+    }
+
+    public void setMd5(String md5) {
+        this.md5 = md5;
     }
 
     public OffsetDateTime getCtime() {
