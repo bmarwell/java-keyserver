@@ -16,17 +16,23 @@
 package io.github.bmarwell.keyserver.application.core;
 
 import io.github.bmarwell.keyserver.application.api.KeyRepositoryService;
+import io.github.bmarwell.keyserver.application.port.repository.KeyRepository;
 import io.github.bmarwell.keyserver.common.ids.KeyId;
 import io.github.bmarwell.keyserver.common.ids.PgpPublicKey;
 import io.github.bmarwell.keyserver.common.ids.RepositoryName;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Default;
+import jakarta.inject.Inject;
 import java.io.Serializable;
 import java.util.Optional;
 
 @Default
 @ApplicationScoped
 public class PersistentKeyRepositoryService implements KeyRepositoryService, Serializable {
+
+    @Inject
+    KeyRepository keyRepository;
+
     @Override
     public void getKeyByRepoAndKeyId(RepositoryName repoName, KeyId keyId) {
         throw new UnsupportedOperationException("not implemented");
@@ -34,6 +40,16 @@ public class PersistentKeyRepositoryService implements KeyRepositoryService, Ser
 
     @Override
     public Optional<PgpPublicKey> getKeyByKeyId(KeyId keyId) {
-        throw new UnsupportedOperationException("not implemented");
+        return keyRepository.findBySearch(keyId.valueWithHexPrefix(), true).map(result -> result::fingerprint);
+    }
+
+    @Override
+    public Optional<String> getArmoredKeyBySearch(String search, boolean exactMatch) {
+        return keyRepository.findBySearch(search, exactMatch).map(KeyRepository.KeySearchResult::armoredKey);
+    }
+
+    // CDI-friendly setter for unit testing
+    public void setKeyRepository(KeyRepository keyRepository) {
+        this.keyRepository = keyRepository;
     }
 }

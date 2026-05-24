@@ -16,6 +16,7 @@
 package io.github.bmarwell.keyserver.repository;
 
 import io.github.bmarwell.keyserver.application.port.repository.KeyRepository;
+import io.github.bmarwell.keyserver.application.port.repository.KeyRepository.KeySearchResult;
 import io.github.bmarwell.keyserver.repository.entity.KeyEntity;
 import io.github.bmarwell.keyserver.repository.entity.UidEntity;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -31,6 +32,8 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
 import org.bouncycastle.openpgp.PGPException;
 import org.bouncycastle.openpgp.PGPPublicKey;
 import org.bouncycastle.openpgp.PGPPublicKeyRing;
@@ -69,6 +72,104 @@ public class JpaKeyRepository extends BaseRepository implements KeyRepository {
             uid.setVerified(true);
             key.addUid(uid);
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Search queries
+    // -------------------------------------------------------------------------
+
+    @Override
+    @Transactional
+    public Optional<KeySearchResult> findBySearch(String search, boolean exactMatch) {
+        if (search == null || search.isBlank()) {
+            return Optional.empty();
+        }
+
+        String normalized = search.strip();
+
+        // Fingerprint or key-ID search: starts with 0x or is all-hex
+        if (normalized.startsWith("0x") || isHexString(normalized)) {
+            return findByKeyIdOrFingerprint(normalized.startsWith("0x") ? normalized.substring(2) : normalized);
+        }
+
+        // Email search
+        if (normalized.contains("@")) {
+            return findByEmail(normalized.toLowerCase(Locale.ROOT), exactMatch);
+        }
+
+        // Fallback: UID substring search (only for non-exact)
+        if (exactMatch) {
+            return Optional.empty();
+        }
+        return findByUidSubstring(normalized);
+    }
+
+    private Optional<KeySearchResult> findByKeyIdOrFingerprint(String hexValue) {
+        String lower = hexValue.toLowerCase(Locale.ROOT);
+        int len = lower.length();
+        if (len == 40 || len == 64) {
+            // Full fingerprint — try uppercase first (as stored by the handler)
+            KeyEntity key = getEntityManager().find(KeyEntity.class, lower.toUpperCase(Locale.ROOT));
+            if (key == null) {
+                key = getEntityManager().find(KeyEntity.class, lower);
+            }
+            return toResult(key);
+        }
+        // Short (8) or long (16) key ID — match via keyid_long suffix
+        String suffix = len == 8 ? "%" + lower : lower;
+        List<KeyEntity> results = getEntityManager()
+                .createQuery("SELECT k FROM KeyEntity k WHERE LOWER(k.keyidLong) LIKE :suffix", KeyEntity.class)
+                .setParameter("suffix", suffix)
+                .setMaxResults(1)
+                .getResultList();
+        return results.isEmpty() ? Optional.empty() : toResult(results.get(0));
+    }
+
+    private Optional<KeySearchResult> findByEmail(String email, boolean exactMatch) {
+        String jpql = exactMatch
+                ? "SELECT DISTINCT k FROM KeyEntity k JOIN k.uids u"
+                        + " WHERE LOWER(u.uidEmail) = :email AND u.verified = true"
+                : "SELECT DISTINCT k FROM KeyEntity k JOIN k.uids u"
+                        + " WHERE LOWER(u.uidEmail) LIKE :email AND u.verified = true";
+        String param = exactMatch ? email : "%" + email + "%";
+        List<KeyEntity> results = getEntityManager()
+                .createQuery(jpql, KeyEntity.class)
+                .setParameter("email", param)
+                .setMaxResults(1)
+                .getResultList();
+        return results.isEmpty() ? Optional.empty() : toResult(results.get(0));
+    }
+
+    private Optional<KeySearchResult> findByUidSubstring(String term) {
+        List<KeyEntity> results = getEntityManager()
+                .createQuery(
+                        "SELECT DISTINCT k FROM KeyEntity k JOIN k.uids u"
+                                + " WHERE LOWER(u.uidRaw) LIKE :term AND u.verified = true",
+                        KeyEntity.class)
+                .setParameter("term", "%" + term.toLowerCase(Locale.ROOT) + "%")
+                .setMaxResults(1)
+                .getResultList();
+        return results.isEmpty() ? Optional.empty() : toResult(results.get(0));
+    }
+
+    private static Optional<KeySearchResult> toResult(KeyEntity key) {
+        if (key == null) {
+            return Optional.empty();
+        }
+        return Optional.of(new KeySearchResult(key.getFingerprint(), key.getArmoredKey()));
+    }
+
+    private static boolean isHexString(String s) {
+        if (s.isEmpty()) {
+            return false;
+        }
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     // -------------------------------------------------------------------------

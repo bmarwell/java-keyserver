@@ -15,6 +15,8 @@
  */
 package io.github.bmarwell.keyserver.application.port.repository;
 
+import java.util.Optional;
+
 /// Secondary (outbound) port for the published key store.
 ///
 /// Keys become visible through this repository only after at least one UID has
@@ -22,6 +24,13 @@ package io.github.bmarwell.keyserver.application.port.repository;
 /// may be present with one UID and later enriched with additional UIDs as their
 /// owners complete verification.
 public interface KeyRepository {
+
+    /// Result type returned by key search queries.
+    ///
+    /// Contains the minimal data required by the HKP `op=get` and `op=index` responses.
+    /// The `armoredKey` field holds only the verified UIDs (privacy-preserving, per
+    /// {@link #publishVerifiedUid} contract).
+    record KeySearchResult(String fingerprint, String armoredKey) {}
 
     /// Publishes a newly verified UID, creating the key record if it does not yet
     /// exist or appending the UID to an existing key record.
@@ -37,4 +46,20 @@ public interface KeyRepository {
     /// @param uidEmail    email address extracted from the UID
     /// @param armoredKey  full ASCII-armored public-key block
     void publishVerifiedUid(String fingerprint, String uidRaw, String uidEmail, String armoredKey);
+
+    /// Searches for a key by fingerprint, key ID, or email address.
+    ///
+    /// The `search` parameter is the raw HKP `search` query string.  Accepted formats:
+    ///
+    /// * `0x<hex>` — fingerprint (40 or 64 chars after prefix) or key ID (8 or 16 chars)
+    /// * `<email>` — exact email address (must contain `@`)
+    /// * other — substring match on UID raw string when `exactMatch` is false; no results
+    ///   when `exactMatch` is true
+    ///
+    /// Returns the first matching key's armored block and fingerprint, or empty if not found.
+    /// Only keys with at least one verified UID are returned.
+    ///
+    /// @param search     HKP search string
+    /// @param exactMatch when true, only exact fingerprint/email matches are returned
+    Optional<KeySearchResult> findBySearch(String search, boolean exactMatch);
 }

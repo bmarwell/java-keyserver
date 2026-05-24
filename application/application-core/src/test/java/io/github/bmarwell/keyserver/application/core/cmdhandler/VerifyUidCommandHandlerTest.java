@@ -59,6 +59,11 @@ class VerifyUidCommandHandlerTest {
         public void publishVerifiedUid(String fingerprint, String uidRaw, String uidEmail, String armoredKey) {
             published.add(new PublishedUid(fingerprint, uidRaw, uidEmail));
         }
+
+        @Override
+        public Optional<KeySearchResult> findBySearch(String search, boolean exactMatch) {
+            return Optional.empty();
+        }
     }
 
     /**

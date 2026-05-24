@@ -16,20 +16,22 @@
 package io.github.bmarwell.keyserver.web.pks;
 
 import io.github.bmarwell.keyserver.application.api.KeyRepositoryService;
-import io.github.bmarwell.keyserver.common.ids.KeyId;
-import io.github.bmarwell.keyserver.common.ids.PgpPublicKey;
+import io.github.bmarwell.keyserver.application.api.ex.KeyNotFoundException;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.QueryParam;
-import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.util.Optional;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 
-/**
- * Implementation of the OpenPGP Keyserver protocol.
- */
+/// HKP `/pks/lookup` endpoint.
+///
+/// Handles `op=get` (return ASCII-armored key block) and stubs `op=index`/`op=vindex`
+/// (machine-readable listing — future work).
+///
+/// Only keys with at least one verified UID are returned.  Search by fingerprint
+/// (`0x<hex>`), long/short key ID, email address, or UID substring.
 @Tag(name = "OpenPGP Keyserver Protocol: Lookup")
 @Path("lookup")
 public class LookupEndpoint {
@@ -38,35 +40,41 @@ public class LookupEndpoint {
     KeyRepositoryService keyRepositoryService;
 
     @GET
-    public Response doLookup(@QueryParam("op") String op, @QueryParam("search") String search) {
-        if (op.equals("get") && !search.isBlank()) {
-            /*
-             * The response to a successful "get" request is a HTTP document containing a keyring
-             * as specified in OpenPGP [RFC4880], section 11.1,
-             * and ASCII armored as specified in section 6.2.
-             */
-            Optional<PgpPublicKey> foundKey = this.keyRepositoryService.getKeyByKeyId(KeyId.fromString(search));
-            if (foundKey.isEmpty()) {
-                return Response.status(Response.Status.NOT_FOUND)
-                        .encoding(MediaType.TEXT_PLAIN)
-                        .entity("Not Found")
-                        .build();
-            }
+    public Response doLookup(
+            @QueryParam("op") String op, @QueryParam("search") String search, @QueryParam("exact") String exact) {
 
-            // TODO: return armored-keys
-            return Response.status(Response.Status.OK)
-                    .encoding("application/pgp-keys; charset=us-ascii")
+        if (op == null || search == null || search.isBlank()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("Missing required parameters: op and search")
+                    .type("text/plain")
                     .build();
         }
 
-        return Response.status(Response.Status.NOT_IMPLEMENTED).build();
+        boolean exactMatch = "on".equalsIgnoreCase(exact);
+
+        if ("get".equalsIgnoreCase(op)) {
+            return handleGet(search, exactMatch);
+        }
+
+        // op=index and op=vindex are future work
+        return Response.status(Response.Status.NOT_IMPLEMENTED)
+                .entity("op=" + op + " is not yet implemented")
+                .type("text/plain")
+                .build();
     }
 
-    public KeyRepositoryService getRepositoryService() {
-        return keyRepositoryService;
+    private Response handleGet(String search, boolean exactMatch) {
+        Optional<String> armoredKey = keyRepositoryService.getArmoredKeyBySearch(search, exactMatch);
+        if (armoredKey.isEmpty()) {
+            throw new KeyNotFoundException("No key found for: " + search);
+        }
+        return Response.ok(armoredKey.get())
+                .type("application/pgp-keys; charset=us-ascii")
+                .build();
     }
 
-    public void setRepositoryService(KeyRepositoryService keyRepositoryService) {
+    // CDI-friendly setter for unit testing
+    public void setKeyRepositoryService(KeyRepositoryService keyRepositoryService) {
         this.keyRepositoryService = keyRepositoryService;
     }
 }
