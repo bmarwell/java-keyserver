@@ -39,6 +39,16 @@
       <artifactId>hypersistence-tsid</artifactId>
     </dependency>
 
+    <!-- BouncyCastle: parse armored key metadata when creating KeyEntity rows -->
+    <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcpg-jdk18on</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcprov-jdk18on</artifactId>
+    </dependency>
+
     <dependency>
       <groupId>org.flywaydb</groupId>
       <artifactId>flyway-core</artifactId>
