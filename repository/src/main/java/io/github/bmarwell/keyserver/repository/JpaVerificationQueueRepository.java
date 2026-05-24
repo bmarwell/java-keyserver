@@ -16,13 +16,16 @@
 package io.github.bmarwell.keyserver.repository;
 
 import io.github.bmarwell.keyserver.application.port.repository.VerificationQueueRepository;
+import io.github.bmarwell.keyserver.application.port.repository.VerificationQueueRepository.VerificationEntry;
 import io.github.bmarwell.keyserver.application.port.repository.VerificationQueueRepository.VerificationRequest;
 import io.github.bmarwell.keyserver.repository.entity.VerificationQueueEntity;
+import io.github.bmarwell.keyserver.repository.entity.VerificationQueueState;
 import io.hypersistence.tsid.TSID;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Default;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
+import java.util.Optional;
 
 /// JPA adapter for the {@link VerificationQueueRepository} secondary port.
 ///
@@ -49,6 +52,31 @@ public class JpaVerificationQueueRepository extends BaseRepository implements Ve
                 request.expiresAt());
         getEntityManager().persist(entity);
         return id;
+    }
+
+    @Override
+    @Transactional
+    public Optional<VerificationEntry> findPendingById(long tokenId) {
+        VerificationQueueEntity entity = getEntityManager().find(VerificationQueueEntity.class, tokenId);
+        if (entity == null || entity.getState() != VerificationQueueState.PENDING) {
+            return Optional.empty();
+        }
+        return Optional.of(new VerificationEntry(
+                entity.getId(),
+                entity.getFingerprint(),
+                entity.getUidRaw(),
+                entity.getUidEmail(),
+                entity.getArmoredKey(),
+                entity.getExpiresAt()));
+    }
+
+    @Override
+    @Transactional
+    public void markVerified(long tokenId) {
+        VerificationQueueEntity entity = getEntityManager().find(VerificationQueueEntity.class, tokenId);
+        if (entity != null) {
+            entity.setState(VerificationQueueState.VERIFIED);
+        }
     }
 
     public void setTsidFactory(TSID.Factory tsidFactory) {

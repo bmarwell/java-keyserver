@@ -22,6 +22,7 @@ import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommandRes
 import io.github.bmarwell.keyserver.application.api.ex.KeyParsingException;
 import io.github.bmarwell.keyserver.application.api.ex.KeyRevokedException;
 import io.github.bmarwell.keyserver.application.api.ex.NoVerifiableUidException;
+import io.github.bmarwell.keyserver.application.api.ex.TooManyVerifiableUidsException;
 import io.github.bmarwell.keyserver.application.port.notification.VerificationNotificationPort;
 import io.github.bmarwell.keyserver.application.port.repository.VerificationQueueRepository;
 import io.github.bmarwell.keyserver.application.port.repository.VerificationQueueRepository.VerificationRequest;
@@ -77,6 +78,24 @@ public class AddKeyToVerificationQueueCommandHandler
 
     static final int TOKEN_TTL_HOURS = 24;
 
+    /// Maximum number of email-bearing UIDs accepted from a single key submission.
+    ///
+    /// ## Rationale
+    ///
+    /// The 2019 SKS keyserver poisoning attack used keys with tens of thousands of
+    /// UIDs to exhaust memory and CPU in anything that processed them.  keys.openpgp.org
+    /// responded by capping at 5 verified email UIDs.
+    ///
+    /// This implementation uses 20:
+    /// - Legitimate real-world keys carry 1–3 UIDs (personal, work, alias).
+    /// - Power users with many email identities rarely exceed 10.
+    /// - 20 leaves ample headroom while remaining 50 000× below DoS territory.
+    /// - Each UID triggers one outbound email and one user interaction, so the cap
+    ///   also limits resource consumption during the verification flow itself.
+    ///
+    /// @see TooManyVerifiableUidsException
+    static final int MAX_EMAIL_UIDS = 20;
+
     @Inject
     VerificationQueueRepository verificationQueueRepository;
 
@@ -121,6 +140,11 @@ public class AddKeyToVerificationQueueCommandHandler
             throw new NoVerifiableUidException(
                     "Key %s has no UIDs with a verifiable email address".formatted(fingerprintHex(masterKey)));
         }
+        if (emailUids.size() > MAX_EMAIL_UIDS) {
+            throw new TooManyVerifiableUidsException(
+                    "Key %s has %d email UIDs, exceeding the limit of %d — submission rejected as potential DoS"
+                            .formatted(fingerprintHex(masterKey), emailUids.size(), MAX_EMAIL_UIDS));
+        }
 
         String fingerprint = fingerprintHex(masterKey);
         OffsetDateTime expiresAt = OffsetDateTime.now().plusHours(TOKEN_TTL_HOURS);
@@ -145,7 +169,7 @@ public class AddKeyToVerificationQueueCommandHandler
         }
     }
 
-    private List<String> collectEmailUids(PGPPublicKey masterKey) {
+    List<String> collectEmailUids(PGPPublicKey masterKey) {
         List<String> emailUids = new ArrayList<>();
         for (Iterator<String> userIds = masterKey.getUserIDs(); userIds.hasNext(); ) {
             String uid = userIds.next();

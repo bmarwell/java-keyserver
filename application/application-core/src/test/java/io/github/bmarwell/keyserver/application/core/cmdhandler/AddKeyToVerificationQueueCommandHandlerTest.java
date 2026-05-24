@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.github.bmarwell.keyserver.application.api.commands.AddKeyToVerificationQueueCommand;
 import io.github.bmarwell.keyserver.application.api.commands.CommandCallerContext;
 import io.github.bmarwell.keyserver.application.api.ex.KeyParsingException;
+import io.github.bmarwell.keyserver.application.api.ex.TooManyVerifiableUidsException;
 import io.github.bmarwell.keyserver.application.port.notification.VerificationNotificationPort;
 import io.github.bmarwell.keyserver.application.port.repository.VerificationQueueRepository;
 import io.github.bmarwell.keyserver.application.port.repository.VerificationQueueRepository.VerificationRequest;
@@ -29,7 +30,10 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.IntStream;
+import org.bouncycastle.openpgp.PGPPublicKey;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -45,6 +49,14 @@ class AddKeyToVerificationQueueCommandHandlerTest {
             received.add(request);
             return counter.getAndIncrement();
         }
+
+        @Override
+        public Optional<VerificationEntry> findPendingById(long tokenId) {
+            return Optional.empty();
+        }
+
+        @Override
+        public void markVerified(long tokenId) {}
     }
 
     /** Fake notification port that records every call. */
@@ -145,5 +157,48 @@ class AddKeyToVerificationQueueCommandHandlerTest {
         String expectedTsidStr = Long.toUnsignedString(1000L); // first ID assigned by fake repo
         assertThat(fakeNotification.received.getFirst().verificationUri().toString())
                 .endsWith(expectedTsidStr);
+    }
+
+    // -----------------------------------------------------------------------
+    // Scenario 6: one million (well, MAX_EMAIL_UIDS + 1) email UIDs → rejected
+    // -----------------------------------------------------------------------
+
+    /**
+     * Subclass that overrides {@code collectEmailUids} to return a synthetic list
+     * of fake email addresses, bypassing the need for a real PGP key with many UIDs.
+     * This tests the DoS guard in isolation from the PGP parsing logic.
+     */
+    static class OverflowingHandler extends AddKeyToVerificationQueueCommandHandler {
+        private final int uidCount;
+
+        OverflowingHandler(int uidCount) {
+            this.uidCount = uidCount;
+        }
+
+        @Override
+        List<String> collectEmailUids(PGPPublicKey masterKey) {
+            return IntStream.range(0, uidCount)
+                    .mapToObj(i -> "user%d@example.com".formatted(i))
+                    .collect(java.util.stream.Collectors.toList());
+        }
+    }
+
+    @Test
+    void scenario6_too_many_email_uids_rejected() throws IOException {
+        int overLimit = AddKeyToVerificationQueueCommandHandler.MAX_EMAIL_UIDS + 1;
+        var overflowHandler = new OverflowingHandler(overLimit);
+        overflowHandler.setVerificationQueueRepository(fakeRepo);
+        overflowHandler.setNotificationPort(fakeNotification);
+
+        String keyText = loadTestKey("test-key-with-email.asc");
+        var command = new AddKeyToVerificationQueueCommand(keyText);
+
+        assertThatThrownBy(() -> overflowHandler.doExecute(command, CommandCallerContext.empty()))
+                .isInstanceOf(TooManyVerifiableUidsException.class)
+                .hasMessageContaining(String.valueOf(overLimit))
+                .hasMessageContaining(String.valueOf(AddKeyToVerificationQueueCommandHandler.MAX_EMAIL_UIDS));
+
+        assertThat(fakeRepo.received).isEmpty();
+        assertThat(fakeNotification.received).isEmpty();
     }
 }
