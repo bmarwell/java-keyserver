@@ -15,6 +15,8 @@
  */
 package io.github.bmarwell.keyserver.application.api.commands;
 
+import java.util.Optional;
+
 /// Command to submit a PGP public key for email-based ownership verification.
 ///
 /// The primary adapter (`AddEndpoint`) reads the ASCII-armored key text from the
@@ -26,4 +28,16 @@ package io.github.bmarwell.keyserver.application.api.commands;
 /// The `anonymizedClientIp` field must already be anonymized (IPv4 last octet
 /// zeroed, IPv6 last 80 bits zeroed) before this record is constructed.  No
 /// downstream component should receive or store a raw IP.
-public record AddKeyToVerificationQueueCommand(String keyText, String anonymizedClientIp) implements KeyServerCommand {}
+///
+/// The anonymized IP is forwarded to the BTX audit row automatically via
+/// {@link #callerIp()} — see implementation-plan §8.7.
+public record AddKeyToVerificationQueueCommand(String keyText, String anonymizedClientIp) implements KeyServerCommand {
+
+    @Override
+    public Optional<String> callerIp() {
+        if (anonymizedClientIp == null || anonymizedClientIp.isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.of(anonymizedClientIp);
+    }
+}

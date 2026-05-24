@@ -15,4 +15,27 @@
  */
 package io.github.bmarwell.keyserver.application.api.commands;
 
-public interface KeyServerCommand {}
+import java.util.Optional;
+
+/// Marker interface for all commands dispatched through the {@link
+/// io.github.bmarwell.keyserver.application.api.CommandService}.
+///
+/// Commands may optionally carry a pre-anonymized caller IP by overriding
+/// {@link #callerIp()}.  The command service reads this value and forwards it
+/// to the business-transaction audit row without any explicit parameter threading
+/// through the handler stack.
+public interface KeyServerCommand {
+
+    /// Returns the pre-anonymized caller IP for audit purposes.
+    ///
+    /// The default implementation returns {@link Optional#empty()}, which tells
+    /// the command service to record {@code null} in the BTX row.
+    /// Commands that capture a caller IP (e.g., HTTP-originated commands) should
+    /// override this method and return the value that was already anonymized by
+    /// {@code IpAnonymizer} before the command was constructed.
+    ///
+    /// @return the anonymized caller IP, or empty if unavailable
+    default Optional<String> callerIp() {
+        return Optional.empty();
+    }
+}

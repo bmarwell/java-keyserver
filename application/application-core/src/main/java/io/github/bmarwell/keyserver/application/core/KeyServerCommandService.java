@@ -82,7 +82,8 @@ public class KeyServerCommandService implements CommandService, Serializable {
         long btxId = tsidFactory.generate().toLong();
         String commandType = keyServerCommand.getClass().getSimpleName();
 
-        btxRepository.recordStarted(btxId, commandType, null);
+        btxRepository.recordStarted(
+                btxId, commandType, keyServerCommand.callerIp().orElse(null));
         btxContext.initialize(btxId);
 
         try {
