@@ -383,39 +383,45 @@ Each mapper must:
 === 5.1 Current State
 
 `KeyServerCommandService` dispatches commands via an async virtual-thread executor.
-The inner `dispatch()` method carries `@Transactional` so the handler's DAO calls run
-in a single JTA transaction.  BTX lifecycle writes (`recordStarted`, `recordCompleted`,
-`recordFailed`) use `REQUIRES_NEW` so they survive a handler rollback.
+The actual handler invocation is delegated to `TransactionalCommandDispatcher` — a
+separate `@ApplicationScoped` CDI bean — so the `@Transactional` annotation is
+applied through the CDI proxy rather than bypassed by same-bean self-invocation.
+Handler DAO calls therefore run in a single JTA `REQUIRED` transaction.  BTX
+lifecycle writes (`recordStarted`, `recordCompleted`, `recordFailed`) use
+`REQUIRES_NEW` so they survive a handler rollback.
 
 === 5.2 Target State
 
-The current implementation already achieves the target.  The `dispatch()` method in
-`KeyServerCommandService` is annotated `@Transactional` (joining REQUIRED).  Each BTX
-write uses REQUIRES_NEW.  Future refinements:
+The current implementation already achieves the target:
 
-* The caller IP carried in the command should be forwarded to `recordStarted()` —
-  see §8.7.
+* `dispatch()` lives in `TransactionalCommandDispatcher` (separate bean), so
+  `@Transactional` fires correctly through the CDI proxy.
+* Each BTX write uses `REQUIRES_NEW`.
+* ✅ The anonymized caller IP is forwarded to `recordStarted()` via `CommandCallerContext`
+  (see §8.7).
 * A `fingerprint` field on `business_transactions` should be populated once the
   handler can extract it (post-parse).
 
 === 5.3 Audit Log Integration
 
 BTX rows serve as the audit log via the `BusinessTransactionRepository` port.
-The `KeyServerCommandService` wraps every handler call:
+`KeyServerCommandService` wraps every handler call in the following pattern:
 
 [source,java]
 ----
+btxRepository.recordStarted(btxId, commandType, callerContext.anonymizedCallerIp());
+btxContext.initialize(btxId);
 try {
-    result = handler.execute(command);
-    auditLogService.recordSuccess(command, correlationId, fingerprint);
-} catch (KeyServerException ex) {
-    auditLogService.recordFailure(command, correlationId, ex);
-    throw ex;
+    dispatcher.dispatch(command, callerContext);  // @Transactional in separate bean
+    btxRepository.recordCompleted(btxId);
+} catch (Exception ex) {
+    btxRepository.recordFailed(btxId, ex.getClass().getSimpleName(), ex.getMessage());
 }
 ----
 
-`AuditLogService` (port in `application-ports`) is implemented by a JPA adapter
-in `repository`.  Its write always uses `REQUIRES_NEW` so it survives a rollback.
+`BusinessTransactionRepository` (port in `application-ports`) is implemented by
+`PersistentBusinessTransactionRepository` in `repository`.  Every write uses
+`REQUIRES_NEW` so it survives a rollback.
 
 == 6. What Needs to Change Per Module
 
@@ -636,14 +642,17 @@ the handler's stack without any explicit parameter threading.
 
 The client IP address is captured and anonymized in the primary adapter
 (`AddEndpoint`) before the command is constructed.  The anonymized value is
-carried in the command record (`AddKeyToVerificationQueueCommand.anonymizedClientIp`).
+carried in a `CommandCallerContext` that travels alongside the command — it is
+**not** a field on the command record itself.
 
-`KeyServerCommand` exposes a `default Optional<String> callerIp()` method that
-returns `Optional.empty()`.  `AddKeyToVerificationQueueCommand` overrides it to
-return the anonymized IP.  `KeyServerCommandService.handleCommand()` calls
-`command.callerIp().orElse(null)` and passes the result to
-`BusinessTransactionRepository.recordStarted()`, wiring the anonymized IP into
-the BTX audit row without any explicit parameter threading through the handler.
+`AddEndpoint` calls `IpAnonymizer.anonymize(remoteAddr)`, wraps the result in
+`CommandCallerContext.of(anonymizedIp)`, and passes both the command and the
+context to `CommandService.handleCommand(command, callerContext)`.
+`KeyServerCommandService` extracts `callerContext.anonymizedCallerIp()` and
+passes it to `BusinessTransactionRepository.recordStarted()`, wiring the
+anonymized IP into the BTX audit row.  The context is also forwarded through
+`TransactionalCommandDispatcher` to each handler's `execute()` method in case a
+handler needs it in the future.
 
 Rules:
 

@@ -18,18 +18,14 @@ package io.github.bmarwell.keyserver.application.core;
 import io.github.bmarwell.keyserver.application.api.CommandService;
 import io.github.bmarwell.keyserver.application.api.commands.CommandCallerContext;
 import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommand;
-import io.github.bmarwell.keyserver.application.core.cmdhandler.CommandHandler;
 import io.github.bmarwell.keyserver.application.core.concurrent.BusinessTransactionContext;
 import io.github.bmarwell.keyserver.application.port.repository.BusinessTransactionRepository;
 import io.hypersistence.tsid.TSID;
 import jakarta.enterprise.concurrent.Asynchronous;
 import jakarta.enterprise.concurrent.ManagedExecutorDefinition;
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.enterprise.inject.Any;
 import jakarta.enterprise.inject.Default;
-import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
-import jakarta.transaction.Transactional;
 import java.io.Serializable;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -53,7 +49,10 @@ import java.util.logging.Logger;
 /// 3. The BTX ID is stored in the `@RequestScoped` `BusinessTransactionContext`
 ///    so that any downstream component (audit writer, DAO) can reference it
 ///    without explicit parameter passing.
-/// 4. The command handler runs inside a `@Transactional` boundary.
+/// 4. The command handler runs inside a `@Transactional` boundary provided by
+///    the injected {@link TransactionalCommandDispatcher}.  Using a separate
+///    bean ensures CDI interceptors fire through the proxy rather than being
+///    bypassed by a same-bean self-invocation.
 /// 5. On success the BTX row is updated to `COMPLETED` (also `REQUIRES_NEW`).
 /// 6. On any exception the BTX row is updated to `FAILED` (`REQUIRES_NEW`) and
 ///    the exception is logged.  It does NOT propagate back — the caller fired and forgot.
@@ -65,8 +64,7 @@ public class KeyServerCommandService implements CommandService, Serializable {
     private static final Logger LOG = Logger.getLogger(KeyServerCommandService.class.getName());
 
     @Inject
-    @Any
-    Instance<CommandHandler<? extends KeyServerCommand>> commandHandlers;
+    TransactionalCommandDispatcher dispatcher;
 
     @Inject
     BusinessTransactionRepository btxRepository;
@@ -87,7 +85,7 @@ public class KeyServerCommandService implements CommandService, Serializable {
         btxContext.initialize(btxId);
 
         try {
-            dispatch(keyServerCommand, callerContext);
+            dispatcher.dispatch(keyServerCommand, callerContext);
             btxRepository.recordCompleted(btxId);
         } catch (Exception ex) {
             btxRepository.recordFailed(btxId, ex.getClass().getSimpleName(), ex.getMessage());
@@ -97,22 +95,10 @@ public class KeyServerCommandService implements CommandService, Serializable {
         }
     }
 
-    @Transactional
-    @SuppressWarnings("unchecked")
-    private <T extends KeyServerCommand> void dispatch(T command, CommandCallerContext callerContext) {
-        CommandHandler<T> handler = (CommandHandler<T>) commandHandlers.stream()
-                .filter(ch -> ch.canHandle(command))
-                .findFirst()
-                .orElseThrow(() -> new UnsupportedOperationException(
-                        "No CommandHandler for: " + command.getClass().getName()));
-
-        handler.execute(command, callerContext);
-    }
-
     // CDI-friendly setters for testing
 
-    public void setCommandHandlers(Instance<CommandHandler<? extends KeyServerCommand>> commandHandlers) {
-        this.commandHandlers = commandHandlers;
+    public void setDispatcher(TransactionalCommandDispatcher dispatcher) {
+        this.dispatcher = dispatcher;
     }
 
     public void setBtxRepository(BusinessTransactionRepository btxRepository) {
