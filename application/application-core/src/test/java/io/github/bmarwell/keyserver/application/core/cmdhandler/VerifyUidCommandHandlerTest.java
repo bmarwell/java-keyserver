@@ -27,22 +27,27 @@ import io.github.bmarwell.keyserver.application.port.repository.VerificationQueu
 import io.github.bmarwell.keyserver.application.port.repository.VerificationQueueRepository.VerificationEntry;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /// Unit tests for {@link VerifyUidCommandHandler}.
 ///
-/// All six verification-flow scenarios are covered here at handler level.
+/// All seven verification-flow scenarios are covered here at handler level.
 /// No database, no CDI container — dependencies are plain fake implementations
 /// wired through setter injection.
 ///
 /// Integration tests with a real Liberty server and PostgreSQL (via Testcontainers)
 /// are planned in the `integration-tests` module and will cover the full HTTP
-/// request → handler → DB roundtrip.
+/// request → handler → DB roundtrip, including the JPA-level concurrency controls
+/// for scenario 7 (concurrent UID publication for the same key).
 class VerifyUidCommandHandlerTest {
 
     // -----------------------------------------------------------------------
@@ -51,9 +56,10 @@ class VerifyUidCommandHandlerTest {
 
     record PublishedUid(String fingerprint, String uidRaw, String uidEmail) {}
 
-    /** Fake key repository that records every publishVerifiedUid call. */
+    /** Fake key repository that records every publishVerifiedUid call. Thread-safe for scenario 7. */
     static class FakeKeyRepository implements KeyRepository {
-        final List<PublishedUid> published = new ArrayList<>();
+        // CopyOnWriteArrayList: safe for concurrent adds without external synchronisation.
+        final List<PublishedUid> published = new CopyOnWriteArrayList<>();
 
         @Override
         public void publishVerifiedUid(String fingerprint, String uidRaw, String uidEmail, String armoredKey) {
@@ -69,13 +75,14 @@ class VerifyUidCommandHandlerTest {
     /**
      * Fake verification-queue repository backed by a simple map.
      * Entries are pre-populated via {@link #put} before the handler is invoked.
+     * Thread-safe for scenario 7: store uses a synchronizedMap, verifiedIds a synchronizedList.
      */
     static class FakeVerificationQueueRepository implements VerificationQueueRepository {
 
         record StoredEntry(VerificationEntry entry, boolean consumed) {}
 
-        final Map<Long, StoredEntry> store = new HashMap<>();
-        final List<Long> verifiedIds = new ArrayList<>();
+        final Map<Long, StoredEntry> store = Collections.synchronizedMap(new HashMap<>());
+        final List<Long> verifiedIds = Collections.synchronizedList(new ArrayList<>());
 
         void put(long id, VerificationEntry entry) {
             store.put(id, new StoredEntry(entry, false));
@@ -257,5 +264,69 @@ class VerifyUidCommandHandlerTest {
                         new VerifyUidCommand(Long.toUnsignedString(9_999L)), CommandCallerContext.empty()))
                 .isInstanceOf(TokenInvalidException.class);
         assertThat(fakeKeys.published).isEmpty();
+    }
+
+    // -----------------------------------------------------------------------
+    // Scenario 7: Two UIDs verified at the exact same time (concurrent publication).
+    //
+    // At the handler level both verifications are independently valid: each token
+    // is distinct and each handler invocation succeeds on its own.  The handler
+    // itself has no race condition — it calls publishVerifiedUid once and returns.
+    //
+    // The race lives in the JPA adapter (JpaKeyRepository): two concurrent
+    // transactions could both see key == null and both attempt a plain INSERT,
+    // causing a constraint violation and losing one UID.  Or both could load the
+    // armored block independently and overwrite each other's UID strip.
+    //
+    // This test verifies the application-layer correctness: both handler invocations
+    // must complete successfully and forward their respective UIDs to the repository.
+    // The JPA-level serialisation (INSERT ON CONFLICT DO NOTHING + PESSIMISTIC_WRITE)
+    // is validated by integration tests in the integration-tests module.
+    // -----------------------------------------------------------------------
+
+    @Test
+    void scenario7_concurrent_uid_verification_both_published() throws Exception {
+        fakeQueue.put(TOKEN_1, pendingEntry(TOKEN_1, "Alice <alice@example.com>", "alice@example.com"));
+        fakeQueue.put(TOKEN_2, pendingEntry(TOKEN_2, "Alice Work <work@corp.example>", "work@corp.example"));
+
+        // Release both threads at the same instant to maximise overlap.
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(2);
+        List<Throwable> errors = new CopyOnWriteArrayList<>();
+
+        Thread t1 = new Thread(() -> {
+            try {
+                start.await();
+                handler.doExecute(new VerifyUidCommand(Long.toUnsignedString(TOKEN_1)), CommandCallerContext.empty());
+            } catch (Throwable t) {
+                errors.add(t);
+            } finally {
+                done.countDown();
+            }
+        });
+        Thread t2 = new Thread(() -> {
+            try {
+                start.await();
+                handler.doExecute(new VerifyUidCommand(Long.toUnsignedString(TOKEN_2)), CommandCallerContext.empty());
+            } catch (Throwable t) {
+                errors.add(t);
+            } finally {
+                done.countDown();
+            }
+        });
+
+        t1.start();
+        t2.start();
+        start.countDown(); // release both simultaneously
+        done.await(5, TimeUnit.SECONDS);
+
+        assertThat(errors).as("no exception during concurrent verification").isEmpty();
+        assertThat(fakeKeys.published)
+                .as("both UIDs must be published — neither lost to a concurrent-write race")
+                .hasSize(2);
+        assertThat(fakeKeys.published)
+                .extracting(PublishedUid::uidEmail)
+                .containsExactlyInAnyOrder("alice@example.com", "work@corp.example");
+        assertThat(fakeQueue.verifiedIds).containsExactlyInAnyOrder(TOKEN_1, TOKEN_2);
     }
 }

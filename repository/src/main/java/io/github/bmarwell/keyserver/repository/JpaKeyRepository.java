@@ -21,6 +21,7 @@ import io.github.bmarwell.keyserver.repository.entity.KeyEntity;
 import io.github.bmarwell.keyserver.repository.entity.UidEntity;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Default;
+import jakarta.persistence.LockModeType;
 import jakarta.transaction.Transactional;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -28,6 +29,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -61,25 +63,62 @@ public class JpaKeyRepository extends BaseRepository implements KeyRepository {
     @Override
     @Transactional
     public void publishVerifiedUid(String fingerprint, String uidRaw, String uidEmail, String armoredKey) {
-        KeyEntity key = getEntityManager().find(KeyEntity.class, fingerprint);
+        // Parse the uploaded key block for metadata and an initial single-UID strip.
+        PGPPublicKey masterKey = parseMasterKey(armoredKey);
+        OffsetDateTime creationTime =
+                Instant.ofEpochMilli(masterKey.getCreationTime().getTime()).atOffset(ZoneOffset.UTC);
+        long validSeconds = masterKey.getValidSeconds();
+        Timestamp expTime = validSeconds > 0
+                ? Timestamp.from(creationTime.plusSeconds(validSeconds).toInstant())
+                : null;
+        Integer bitStrength = masterKey.getBitStrength() > 0 ? masterKey.getBitStrength() : null;
 
-        if (key == null) {
-            // Privacy: strip all UIDs except the one being verified now.
-            // The queued armoredKey is the raw user upload containing ALL UIDs.
-            // We must not publish unverified identities — only serve what the owner
-            // has actively confirmed via the email link.
-            String stripped = stripToVerifiedUids(armoredKey, Set.of(uidRaw));
-            key = createKeyEntity(fingerprint, stripped);
-            getEntityManager().persist(key);
-        } else {
-            // Build the set of already-verified UIDs plus the new one being confirmed.
-            // Re-strip from the original armored key (which was stored in the queue) so
-            // the stored block always reflects exactly the verified-UID set and nothing more.
-            Set<String> verifiedUids = loadVerifiedUidRaws(fingerprint);
-            verifiedUids.add(uidRaw);
-            String stripped = stripToVerifiedUids(armoredKey, verifiedUids);
-            updateKey(key, stripped);
-        }
+        // Strip to just the new UID for the initial row — overwritten unconditionally below,
+        // but needed to satisfy the armored_key NOT NULL constraint on a fresh insert.
+        String initialStripped = stripToVerifiedUids(armoredKey, Set.of(uidRaw));
+        String initialMd5 = md5Hex(initialStripped);
+
+        // Ensure the key row exists before acquiring an exclusive lock.
+        //
+        // ON CONFLICT (fingerprint) DO NOTHING makes this idempotent:
+        //   - If the key does not exist yet, the row is created with the initial strip.
+        //   - If it already exists (or a concurrent transaction just created it),
+        //     PostgreSQL silently skips the insert.
+        //
+        // Concurrent first-publish serialisation: two transactions racing on the same
+        // fingerprint both reach this INSERT.  PostgreSQL serialises them on the PK —
+        // the second blocks until the first commits, then observes the conflict and
+        // continues without inserting.  The PESSIMISTIC_WRITE find below then fully
+        // serialises the armored-key rewrite for both transactions.
+        getEntityManager()
+                .createNativeQuery("INSERT INTO keys"
+                        + " (fingerprint, version, algorithm, bit_strength,"
+                        + "  creation_time, expiration_time, revoked, armored_key, md5)"
+                        + " VALUES (:fp, :ver, :alg, :bs, :ct, :et, false, :ak, :md5)"
+                        + " ON CONFLICT (fingerprint) DO NOTHING")
+                .setParameter("fp", fingerprint)
+                .setParameter("ver", masterKey.getVersion())
+                .setParameter("alg", masterKey.getAlgorithm())
+                .setParameter("bs", bitStrength)
+                .setParameter("ct", Timestamp.from(creationTime.toInstant()))
+                .setParameter("et", expTime)
+                .setParameter("ak", initialStripped)
+                .setParameter("md5", initialMd5)
+                .executeUpdate();
+
+        // Acquire an exclusive row lock — serialises concurrent UID publications for
+        // the same key from this point forward.  The row is guaranteed to exist after
+        // the INSERT above, so PESSIMISTIC_WRITE will always find a row to lock.
+        KeyEntity key = getEntityManager().find(KeyEntity.class, fingerprint, LockModeType.PESSIMISTIC_WRITE);
+
+        // Reload the set of already-committed verified UIDs (from prior transactions),
+        // add the new UID, and re-strip the original upload block.  This guarantees
+        // the stored armored block always contains exactly the verified-UID set —
+        // no more, no less — regardless of which transaction ran first.
+        Set<String> verifiedUids = loadVerifiedUidRaws(fingerprint);
+        verifiedUids.add(uidRaw);
+        String stripped = stripToVerifiedUids(armoredKey, verifiedUids);
+        updateKey(key, stripped);
 
         // Add the UID row if not already present (idempotency guard for retries).
         if (!hasUid(key.getFingerprint(), uidRaw)) {
@@ -103,9 +142,13 @@ public class JpaKeyRepository extends BaseRepository implements KeyRepository {
 
         String normalized = search.strip();
 
-        // Fingerprint or key-ID search: starts with 0x or is all-hex
-        if (normalized.startsWith("0x") || isHexString(normalized)) {
-            return findByKeyIdOrFingerprint(normalized.startsWith("0x") ? normalized.substring(2) : normalized);
+        // Key-ID/fingerprint: starts with 0x or is all-hex with a valid key-ID/fingerprint length.
+        // Only take this path for lengths 8 (short key ID), 16 (long key ID), 40 (v4 fingerprint),
+        // or 64 (v5 fingerprint).  All-hex strings of other lengths (e.g. "cafe", a colour name
+        // that happens to be hex) must fall through to UID-substring search.
+        String hexCandidate = normalized.startsWith("0x") ? normalized.substring(2) : normalized;
+        if ((normalized.startsWith("0x") || isHexString(hexCandidate)) && isValidKeyIdLength(hexCandidate.length())) {
+            return findByKeyIdOrFingerprint(hexCandidate);
         }
 
         // Email search
@@ -121,21 +164,34 @@ public class JpaKeyRepository extends BaseRepository implements KeyRepository {
     }
 
     private Optional<KeySearchResult> findByKeyIdOrFingerprint(String hexValue) {
-        String lower = hexValue.toLowerCase(Locale.ROOT);
-        int len = lower.length();
+        // Normalise to uppercase: fingerprint (and the DB-generated keyid_long column) are stored
+        // as uppercase.  Avoiding LOWER() on the column allows the DB to use the keys_keyid_long
+        // index and the keys_rfingerprint text_pattern_ops index.
+        String upper = hexValue.toUpperCase(Locale.ROOT);
+        int len = upper.length();
+
         if (len == 40 || len == 64) {
-            // Full fingerprint — try uppercase first (as stored by the handler)
-            KeyEntity key = getEntityManager().find(KeyEntity.class, lower.toUpperCase(Locale.ROOT));
-            if (key == null) {
-                key = getEntityManager().find(KeyEntity.class, lower);
-            }
-            return toResult(key);
+            // Full fingerprint — primary key lookup (always indexed).
+            return toResult(getEntityManager().find(KeyEntity.class, upper));
         }
-        // Short (8) or long (16) key ID — match via keyid_long suffix
-        String suffix = len == 8 ? "%" + lower : lower;
+
+        if (len == 16) {
+            // Long key ID: exact match on the generated keyid_long column (uses keys_keyid_long index).
+            List<KeyEntity> results = getEntityManager()
+                    .createQuery("SELECT k FROM KeyEntity k WHERE k.keyidLong = :keyId", KeyEntity.class)
+                    .setParameter("keyId", upper)
+                    .setMaxResults(1)
+                    .getResultList();
+            return results.isEmpty() ? Optional.empty() : toResult(results.get(0));
+        }
+
+        // Short key ID (8 chars): reverse it and use the rfingerprint text_pattern_ops index for a
+        // prefix scan.  reverse(fingerprint) starts with reverse(shortKeyId), so this matches the
+        // last 8 chars of the fingerprint without a leading-wildcard LIKE on the forward column.
+        String reversedShortId = new StringBuilder(upper).reverse().toString();
         List<KeyEntity> results = getEntityManager()
-                .createQuery("SELECT k FROM KeyEntity k WHERE LOWER(k.keyidLong) LIKE :suffix", KeyEntity.class)
-                .setParameter("suffix", suffix)
+                .createQuery("SELECT k FROM KeyEntity k WHERE k.rfingerprint LIKE :prefix", KeyEntity.class)
+                .setParameter("prefix", reversedShortId + "%")
                 .setMaxResults(1)
                 .getResultList();
         return results.isEmpty() ? Optional.empty() : toResult(results.get(0));
@@ -188,22 +244,14 @@ public class JpaKeyRepository extends BaseRepository implements KeyRepository {
         return true;
     }
 
+    private static boolean isValidKeyIdLength(int len) {
+        // 8 = short key ID, 16 = long key ID, 40 = v4 fingerprint, 64 = v5 fingerprint.
+        return len == 8 || len == 16 || len == 40 || len == 64;
+    }
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
-
-    private KeyEntity createKeyEntity(String fingerprint, String armoredKey) {
-        PGPPublicKey masterKey = parseMasterKey(armoredKey);
-        OffsetDateTime creationTime =
-                Instant.ofEpochMilli(masterKey.getCreationTime().getTime()).atOffset(ZoneOffset.UTC);
-        String md5 = md5Hex(armoredKey);
-        KeyEntity key = new KeyEntity(
-                fingerprint, masterKey.getVersion(), masterKey.getAlgorithm(), creationTime, armoredKey, md5);
-        if (masterKey.getValidSeconds() > 0) {
-            key.setExpirationTime(creationTime.plusSeconds(masterKey.getValidSeconds()));
-        }
-        return key;
-    }
 
     private void updateKey(KeyEntity key, String armoredKey) {
         key.setArmoredKey(armoredKey);
