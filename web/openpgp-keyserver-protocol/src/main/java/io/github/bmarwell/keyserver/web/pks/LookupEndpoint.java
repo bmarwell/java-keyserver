@@ -42,10 +42,14 @@ public class LookupEndpoint {
     public Response doLookup(
             @QueryParam("op") String op, @QueryParam("search") String search, @QueryParam("exact") String exact) {
 
-        // Both null and blank op are invalid — HKP requires a non-empty op parameter.
-        if (op == null || op.isBlank() || search == null || search.isBlank()) {
+        // Both null/blank op and search are invalid — HKP requires both to be present.
+        // Report exactly which parameter(s) are missing so the client can self-correct.
+        boolean missingOp = op == null || op.isBlank();
+        boolean missingSearch = search == null || search.isBlank();
+        if (missingOp || missingSearch) {
+            String missing = missingOp && missingSearch ? "op and search" : missingOp ? "op" : "search";
             return Response.status(Response.Status.BAD_REQUEST)
-                    .entity("Missing required parameters: op and search")
+                    .entity("Missing required parameter(s): " + missing)
                     .type("text/plain")
                     .build();
         }

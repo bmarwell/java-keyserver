@@ -63,48 +63,46 @@ public class JpaKeyRepository extends BaseRepository implements KeyRepository {
     @Override
     @Transactional
     public void publishVerifiedUid(String fingerprint, String uidRaw, String uidEmail, String armoredKey) {
-        // Parse the uploaded key block for metadata and an initial single-UID strip.
-        PGPPublicKey masterKey = parseMasterKey(armoredKey);
-        OffsetDateTime creationTime =
-                Instant.ofEpochMilli(masterKey.getCreationTime().getTime()).atOffset(ZoneOffset.UTC);
-        long validSeconds = masterKey.getValidSeconds();
-        Timestamp expTime = validSeconds > 0
-                ? Timestamp.from(creationTime.plusSeconds(validSeconds).toInstant())
-                : null;
-        Integer bitStrength = masterKey.getBitStrength() > 0 ? masterKey.getBitStrength() : null;
-
-        // Strip to just the new UID for the initial row — overwritten unconditionally below,
-        // but needed to satisfy the armored_key NOT NULL constraint on a fresh insert.
-        String initialStripped = stripToVerifiedUids(armoredKey, Set.of(uidRaw));
-        String initialMd5 = md5Hex(initialStripped);
-
-        // Ensure the key row exists before acquiring an exclusive lock.
+        // Fast-path: if the key row already exists we can skip the expensive Bouncy Castle parse
+        // and the native INSERT entirely.  The PESSIMISTIC_WRITE find below will still serialise
+        // concurrent UID publications for the same fingerprint.
         //
-        // ON CONFLICT (fingerprint) DO NOTHING makes this idempotent:
-        //   - If the key does not exist yet, the row is created with the initial strip.
-        //   - If it already exists (or a concurrent transaction just created it),
-        //     PostgreSQL silently skips the insert.
-        //
-        // Concurrent first-publish serialisation: two transactions racing on the same
-        // fingerprint both reach this INSERT.  PostgreSQL serialises them on the PK —
-        // the second blocks until the first commits, then observes the conflict and
-        // continues without inserting.  The PESSIMISTIC_WRITE find below then fully
-        // serialises the armored-key rewrite for both transactions.
-        getEntityManager()
-                .createNativeQuery("INSERT INTO keys"
-                        + " (fingerprint, version, algorithm, bit_strength,"
-                        + "  creation_time, expiration_time, revoked, armored_key, md5)"
-                        + " VALUES (:fp, :ver, :alg, :bs, :ct, :et, false, :ak, :md5)"
-                        + " ON CONFLICT (fingerprint) DO NOTHING")
-                .setParameter("fp", fingerprint)
-                .setParameter("ver", masterKey.getVersion())
-                .setParameter("alg", masterKey.getAlgorithm())
-                .setParameter("bs", bitStrength)
-                .setParameter("ct", Timestamp.from(creationTime.toInstant()))
-                .setParameter("et", expTime)
-                .setParameter("ak", initialStripped)
-                .setParameter("md5", initialMd5)
-                .executeUpdate();
+        // Concurrent first-publish race: two transactions may both see null here and both
+        // attempt the INSERT.  ON CONFLICT (fingerprint) DO NOTHING handles that safely —
+        // the second transaction blocks until the first commits, then silently skips the insert.
+        // The PESSIMISTIC_WRITE find below then serialises both for the armored-key rewrite.
+        if (getEntityManager().find(KeyEntity.class, fingerprint) == null) {
+            // Parse the uploaded key block for metadata — only needed for the initial row.
+            PGPPublicKey masterKey = parseMasterKey(armoredKey);
+            OffsetDateTime creationTime =
+                    Instant.ofEpochMilli(masterKey.getCreationTime().getTime()).atOffset(ZoneOffset.UTC);
+            long validSeconds = masterKey.getValidSeconds();
+            Timestamp expTime = validSeconds > 0
+                    ? Timestamp.from(creationTime.plusSeconds(validSeconds).toInstant())
+                    : null;
+            Integer bitStrength = masterKey.getBitStrength() > 0 ? masterKey.getBitStrength() : null;
+
+            // Strip to just the new UID for the initial row — overwritten unconditionally below,
+            // but needed to satisfy the armored_key NOT NULL constraint on a fresh insert.
+            String initialStripped = stripToVerifiedUids(armoredKey, Set.of(uidRaw));
+            String initialMd5 = md5Hex(initialStripped);
+
+            getEntityManager()
+                    .createNativeQuery("INSERT INTO keys"
+                            + " (fingerprint, version, algorithm, bit_strength,"
+                            + "  creation_time, expiration_time, revoked, armored_key, md5)"
+                            + " VALUES (:fp, :ver, :alg, :bs, :ct, :et, false, :ak, :md5)"
+                            + " ON CONFLICT (fingerprint) DO NOTHING")
+                    .setParameter("fp", fingerprint)
+                    .setParameter("ver", masterKey.getVersion())
+                    .setParameter("alg", masterKey.getAlgorithm())
+                    .setParameter("bs", bitStrength)
+                    .setParameter("ct", Timestamp.from(creationTime.toInstant()))
+                    .setParameter("et", expTime)
+                    .setParameter("ak", initialStripped)
+                    .setParameter("md5", initialMd5)
+                    .executeUpdate();
+        }
 
         // Acquire an exclusive row lock — serialises concurrent UID publications for
         // the same key from this point forward.  The row is guaranteed to exist after

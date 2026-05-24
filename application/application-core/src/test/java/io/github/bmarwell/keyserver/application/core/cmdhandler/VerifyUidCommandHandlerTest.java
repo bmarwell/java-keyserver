@@ -318,7 +318,18 @@ class VerifyUidCommandHandlerTest {
         t1.start();
         t2.start();
         start.countDown(); // release both simultaneously
-        done.await(5, TimeUnit.SECONDS);
+
+        // If await returns false the threads did not finish within the deadline.
+        // Interrupt both and join to avoid dangling threads poisoning subsequent tests.
+        boolean completed = done.await(5, TimeUnit.SECONDS);
+        if (!completed) {
+            t1.interrupt();
+            t2.interrupt();
+            t1.join(1_000);
+            t2.join(1_000);
+            org.junit.jupiter.api.Assertions.fail(
+                    "Concurrent verification did not complete within timeout — possible deadlock");
+        }
 
         assertThat(errors).as("no exception during concurrent verification").isEmpty();
         assertThat(fakeKeys.published)
