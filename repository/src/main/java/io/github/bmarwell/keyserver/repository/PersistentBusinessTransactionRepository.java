@@ -53,7 +53,7 @@ public class PersistentBusinessTransactionRepository extends BaseRepository impl
 
     @Override
     @Transactional(Transactional.TxType.REQUIRES_NEW)
-    public void recordFailed(long btxId, String errorType, String errorMessage) {
+    public void recordFailed(long btxId, String errorType, @Nullable String errorMessage) {
         BusinessTransactionEntity entity = getEntityManager().find(BusinessTransactionEntity.class, btxId);
         if (entity != null) {
             entity.markFailed(errorType, errorMessage);

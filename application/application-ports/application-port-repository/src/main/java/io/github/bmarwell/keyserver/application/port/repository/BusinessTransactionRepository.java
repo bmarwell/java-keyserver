@@ -40,5 +40,5 @@ public interface BusinessTransactionRepository {
     ///
     /// @param errorType    simple class name of the thrown exception
     /// @param errorMessage `Exception.getMessage()`, may be `null`
-    void recordFailed(long btxId, String errorType, String errorMessage);
+    void recordFailed(long btxId, String errorType, @Nullable String errorMessage);
 }

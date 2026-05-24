@@ -102,7 +102,7 @@ public class BusinessTransactionEntity {
         this.completedAt = OffsetDateTime.now();
     }
 
-    public void markFailed(String errorType, String errorMessage) {
+    public void markFailed(String errorType, @Nullable String errorMessage) {
         this.state = BusinessTransactionState.FAILED;
         this.completedAt = OffsetDateTime.now();
         this.errorType = errorType;
