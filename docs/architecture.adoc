@@ -56,7 +56,7 @@ adapters implement them.
 
 |`KeyRepository`
 |`application-port-repository`
-|_(stub)_
+|`JpaKeyRepository` in `repository`
 
 |`VerificationNotificationPort`
 |`application-port-notification`
@@ -74,9 +74,13 @@ adapters implement them.
 |`web/openpgp-keyserver-protocol`
 |`CommandService`
 
-|`LookupEndpoint` _(stub)_
+|`LookupEndpoint` (`op=get` implemented; `op=index`/`op=vindex` return 501)
 |`web/openpgp-keyserver-protocol`
-|`KeyRepository`
+|`KeyRepositoryService`
+
+|`VerifyEndpoint`
+|`web/openpgp-keyserver-protocol`
+|`CommandService`
 
 |===
 
@@ -146,11 +150,29 @@ For lookup use cases, the flow is shorter:
 
 == 6. Weak spots
 
-* Many end-to-end flows are still stubs or return `501/503`.
+* `op=index` and `op=vindex` are not implemented (`LookupEndpoint` returns 501).
+  GnuPG key search via name/email therefore fails — only fingerprint/key-ID
+  `op=get` works. HKP compliance is partial.
+* `VerifyEndpoint` always returns `202 Accepted` regardless of outcome.
+  The caller never sees success or failure; there is no polling endpoint.
+* Async command dispatch is opaque to the HTTP caller: exceptions in the virtual-thread
+  executor are logged but not surfaced. A future iteration needs at minimum a
+  correlation-ID header so errors can be traced.
+* The `business_transactions.fingerprint` column is always null — no handler
+  populates it yet.
+* `web/rest` endpoints return `503 Service Unavailable` on every call.
+  The module compiles and deploys but provides no usable functionality.
+* `SmtpVerificationNotificationAdapter` is not wired. Only the logging adapter
+  exists, so no actual verification email is sent.
+* No HTTP-layer rate limiting on `POST /pks/add`. The DoS guard in
+  `VerifyUidCommandHandler` defends the verification queue but the add path
+  is unguarded.
 * Command dispatch is runtime-based (`canHandle`) rather than compile-time safe.
-* Validation, persistence, and response rendering are incomplete.
-* The current tests mostly cover dispatch behavior, not the protocol flows.
-* Some helper and adapter types are only partially implemented.
+  An unregistered command type silently fails at runtime with a warning log.
+* `publishVerifiedUid` has a minor TOCTOU: two concurrent first-publish transactions
+  both pass the non-locking existence check, both do a full Bouncy Castle parse.
+  The `ON CONFLICT DO NOTHING` INSERT serialises correctly, but one of the two
+  parses is wasted.  Acceptable in practice; worth noting for honesty.
 
 == 7. Where the design fits well
 
@@ -159,6 +181,57 @@ For lookup use cases, the flow is shorter:
 * Value objects reduce stringly-typed plumbing.
 * The ports/adapters boundary should make future storage or mail replacements easy.
 * Flyway plus JPA is a sensible fit for repository metadata and queue state.
+* The full UID-verification flow (scenarios 1–7) is implemented end-to-end:
+  submission, token dispatch, expiry guard, concurrent same-fingerprint and
+  same-UID race conditions, and armored-key rewriting with exactly the verified
+  UID set.  All seven scenarios have unit tests.
+* Concurrent UID publication is correctly serialised via
+  `INSERT … ON CONFLICT (fingerprint) DO NOTHING` followed by a
+  `PESSIMISTIC_WRITE` row lock — no application-level locking needed.
+* Third-party certification stripping is in place: only self-signatures are
+  stored, preventing the server from becoming a social-graph database.
+
+== 9. Verification flow
+
+=== Happy path
+
+[source]
+----
+POST /pks/add?keytext=…
+  → AddKeyToVerificationQueueCommandHandler
+    → JpaVerificationQueueRepository: insert one queue row per UID
+    → VerificationNotificationPort: send email with /pks/verify/{token} link
+
+GET /pks/verify/{token}
+  → VerifyUidCommandHandler
+    → JpaVerificationQueueRepository: find pending row by token
+      [guard] token not found         → TokenInvalidException  (400)
+      [guard] token expired           → TokenExpiredException  (400)
+      [guard] already verified        → return (idempotent, no re-send)
+    → JpaKeyRepository.publishVerifiedUid(fingerprint, uidRaw, uidEmail, armoredKey)
+      → existence check (non-locking find)
+      → if new: parseMasterKey + strip to one UID + INSERT ON CONFLICT DO NOTHING
+      → PESSIMISTIC_WRITE find (serialises concurrent updates)
+      → reload all verified UIDs + re-strip armored block + updateKey
+      → hasUid guard → add UidEntity if absent
+    → JpaVerificationQueueRepository: mark row VERIFIED
+----
+
+=== Concurrent first-publish (scenario 7)
+
+Two `VerifyUidCommand` calls for different UIDs on the same fingerprint race
+at exactly the same moment:
+
+. Both pass the non-locking existence check (`find == null`).
+. Both parse the armored key (one parse is wasted — acceptable overhead).
+. Both attempt the native INSERT. PostgreSQL serialises on the fingerprint PK:
+   the second blocks until the first commits, then observes the conflict and
+   skips the insert.
+. Both then do a `PESSIMISTIC_WRITE` find, which serialises sequentially.
+. Each transaction reloads the current verified-UID set, adds its own UID,
+   and re-strips.  The final committed state contains both UIDs.
+
+No UID is lost and no dirty state is written.
 
 == 8. Identity strategy
 
@@ -317,5 +390,13 @@ Its weak points that we address differently:
 
 == 12. Current state
 
-This repository has a promising structure but is not yet functionally complete.
-Treat this document as an orientation guide, not a stable architecture promise.
+The add → verify → lookup path for `op=get` is functionally complete:
+a key can be submitted, its UIDs verified by email link, and retrieved
+by fingerprint, key ID, or email.
+
+Remaining gaps: `op=index`/`op=vindex` not implemented, SMTP not wired,
+`web/rest` stubs only, no HTTP rate limiting on add.  The architecture is
+sound; the functional surface is narrow.
+
+This document is kept deliberately short.  Section numbers reflect deliberate
+ordering; section 9 was added to fill the gap that existed between §8 and §10.
