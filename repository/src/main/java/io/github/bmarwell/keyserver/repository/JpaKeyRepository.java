@@ -23,6 +23,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Default;
 import jakarta.transaction.Transactional;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -30,14 +31,20 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.HexFormat;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
+import org.bouncycastle.bcpg.ArmoredOutputStream;
 import org.bouncycastle.openpgp.PGPException;
 import org.bouncycastle.openpgp.PGPPublicKey;
 import org.bouncycastle.openpgp.PGPPublicKeyRing;
 import org.bouncycastle.openpgp.PGPPublicKeyRingCollection;
+import org.bouncycastle.openpgp.PGPSignature;
 import org.bouncycastle.openpgp.PGPUtil;
 import org.bouncycastle.openpgp.operator.bc.BcKeyFingerprintCalculator;
 
@@ -57,16 +64,25 @@ public class JpaKeyRepository extends BaseRepository implements KeyRepository {
         KeyEntity key = getEntityManager().find(KeyEntity.class, fingerprint);
 
         if (key == null) {
-            key = createKeyEntity(fingerprint, armoredKey);
+            // Privacy: strip all UIDs except the one being verified now.
+            // The queued armoredKey is the raw user upload containing ALL UIDs.
+            // We must not publish unverified identities — only serve what the owner
+            // has actively confirmed via the email link.
+            String stripped = stripToVerifiedUids(armoredKey, Set.of(uidRaw));
+            key = createKeyEntity(fingerprint, stripped);
             getEntityManager().persist(key);
         } else {
-            // Update the armored block so it reflects newly verified UIDs (privacy: caller
-            // is responsible for stripping unverified UIDs before passing armoredKey here).
-            updateKey(key, armoredKey);
+            // Build the set of already-verified UIDs plus the new one being confirmed.
+            // Re-strip from the original armored key (which was stored in the queue) so
+            // the stored block always reflects exactly the verified-UID set and nothing more.
+            Set<String> verifiedUids = loadVerifiedUidRaws(fingerprint);
+            verifiedUids.add(uidRaw);
+            String stripped = stripToVerifiedUids(armoredKey, verifiedUids);
+            updateKey(key, stripped);
         }
 
-        // Add the UID if it is not already present (idempotency guard for retries).
-        if (!hasUid(key, uidRaw)) {
+        // Add the UID row if not already present (idempotency guard for retries).
+        if (!hasUid(key.getFingerprint(), uidRaw)) {
             UidEntity uid = new UidEntity(key, uidRaw);
             uid.setUidEmail(uidEmail);
             uid.setVerified(true);
@@ -190,44 +206,123 @@ public class JpaKeyRepository extends BaseRepository implements KeyRepository {
     }
 
     private void updateKey(KeyEntity key, String armoredKey) {
-        // Use reflection-friendly setter approach: the entity exposes setArmoredKey and
-        // setMtime via package-private mutation helpers below.
         key.setArmoredKey(armoredKey);
+        // Keep the MD5 checksum in sync with the stored armored block.
+        // The checksum drifts if we update the block without recomputing it, breaking
+        // any deduplication or integrity checks that rely on this column.
+        key.setMd5(md5Hex(armoredKey));
         key.setMtime(OffsetDateTime.now());
     }
 
-    private boolean hasUid(KeyEntity key, String uidRaw) {
-        // Check the in-memory collection first (avoids extra query when key was just
-        // persisted and the collection is already populated).
-        List<UidEntity> existing = key.getUids();
-        for (UidEntity u : existing) {
-            if (uidRaw.equals(u.getUidRaw())) {
-                return true;
-            }
-        }
-        // Fall back to a database query in case the collection is not yet initialised
-        // (lazy-loaded proxy for a pre-existing key).
+    /// Returns whether a UID row already exists for the given fingerprint and raw UID string.
+    ///
+    /// Uses a single `COUNT` query rather than loading the full UID collection into memory.
+    /// Loading all UIDs to check one can be expensive for keys with many verified UIDs.
+    private boolean hasUid(String fingerprint, String uidRaw) {
         Long count = getEntityManager()
                 .createQuery(
                         "SELECT COUNT(u) FROM UidEntity u WHERE u.key.fingerprint = :fp AND u.uidRaw = :raw",
                         Long.class)
-                .setParameter("fp", key.getFingerprint())
+                .setParameter("fp", fingerprint)
                 .setParameter("raw", uidRaw)
                 .getSingleResult();
         return count > 0;
     }
 
+    /// Returns the raw UID strings of all currently verified UIDs for a key.
+    ///
+    /// Used to compute the "UIDs to keep" set before stripping unverified identities
+    /// from the armored block.  Returns a mutable set so the caller can add the new UID.
+    private Set<String> loadVerifiedUidRaws(String fingerprint) {
+        return getEntityManager()
+                .createQuery(
+                        "SELECT u.uidRaw FROM UidEntity u WHERE u.key.fingerprint = :fp AND u.verified = true",
+                        String.class)
+                .setParameter("fp", fingerprint)
+                .getResultStream()
+                .collect(Collectors.toCollection(java.util.HashSet::new));
+    }
+
+    /// Parses the armored block and returns the master public key of the first ring.
+    ///
+    /// @throws IllegalArgumentException if the input contains no key rings or is malformed.
     private PGPPublicKey parseMasterKey(String armoredKey) {
+        return parseKeyRing(armoredKey).getPublicKey();
+    }
+
+    /// Parses the armored block and returns the first {@link PGPPublicKeyRing}.
+    ///
+    /// @throws IllegalArgumentException if the input contains no key rings or is malformed.
+    private PGPPublicKeyRing parseKeyRing(String armoredKey) {
         try {
             byte[] bytes = armoredKey.getBytes(StandardCharsets.UTF_8);
             try (var stream = PGPUtil.getDecoderStream(new ByteArrayInputStream(bytes))) {
                 PGPPublicKeyRingCollection rings =
                         new PGPPublicKeyRingCollection(stream, new BcKeyFingerprintCalculator());
-                PGPPublicKeyRing ring = rings.iterator().next();
-                return ring.getPublicKey();
+                Iterator<PGPPublicKeyRing> it = rings.iterator();
+                if (!it.hasNext()) {
+                    throw new IllegalArgumentException("Armored input decodes but contains no public key rings");
+                }
+                return it.next();
             }
         } catch (IOException | PGPException e) {
             throw new IllegalArgumentException("Failed to parse armored key: " + e.getMessage(), e);
+        }
+    }
+
+    /// Strips all UIDs except those in `uidRawsToKeep` from the armored key block and
+    /// re-exports the result as ASCII armor.
+    ///
+    /// ## Privacy contract
+    ///
+    /// The raw upload may contain many UIDs (name/email combinations).  We must never
+    /// serve UIDs the owner has not verified via the email flow.  This method removes
+    /// the OpenPGP certification packets for every unverified UID so the stored block
+    /// — and therefore the HKP `op=get` response — only contains verified identities.
+    ///
+    /// ## Note on duplicated BC parsing
+    ///
+    /// `AddKeyToVerificationQueueCommandHandler` also parses armored key blocks using
+    /// Bouncycastle.  The duplication is intentional: the handler lives in the
+    /// application core (infrastructure-free) while this class is the infrastructure
+    /// adapter; sharing code would violate the hexagonal architecture layer boundary.
+    /// A shared `pgp-utils` module could be introduced if the duplication grows.
+    private String stripToVerifiedUids(String armoredKey, Set<String> uidRawsToKeep) {
+        try {
+            PGPPublicKeyRing ring = parseKeyRing(armoredKey);
+            PGPPublicKey masterKey = ring.getPublicKey();
+
+            // Collect UIDs to remove first (avoids ConcurrentModificationException
+            // when mutating certifications while iterating).
+            List<String> uidsToRemove = new ArrayList<>();
+            for (Iterator<String> it = masterKey.getUserIDs(); it.hasNext(); ) {
+                String uid = it.next();
+                if (!uidRawsToKeep.contains(uid)) {
+                    uidsToRemove.add(uid);
+                }
+            }
+
+            // Remove all certification signatures for each unwanted UID.
+            // PGPPublicKey.removeCertification returns a new immutable instance each time.
+            for (String uid : uidsToRemove) {
+                List<PGPSignature> sigsToRemove = new ArrayList<>();
+                for (Iterator<PGPSignature> sigs = masterKey.getSignaturesForID(uid); sigs.hasNext(); ) {
+                    sigsToRemove.add(sigs.next());
+                }
+                for (PGPSignature sig : sigsToRemove) {
+                    masterKey = PGPPublicKey.removeCertification(masterKey, uid, sig);
+                }
+            }
+
+            // Rebuild the ring with the stripped master key and re-export to ASCII armor.
+            ring = PGPPublicKeyRing.insertPublicKey(ring, masterKey);
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            try (ArmoredOutputStream armor = new ArmoredOutputStream(out)) {
+                ring.encode(armor);
+            }
+            return out.toString(StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Failed to strip UIDs from armored key: " + e.getMessage(), e);
         }
     }
 

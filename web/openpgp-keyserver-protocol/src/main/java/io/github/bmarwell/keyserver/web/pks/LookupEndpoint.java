@@ -16,7 +16,6 @@
 package io.github.bmarwell.keyserver.web.pks;
 
 import io.github.bmarwell.keyserver.application.api.KeyRepositoryService;
-import io.github.bmarwell.keyserver.application.api.ex.KeyNotFoundException;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
@@ -43,7 +42,8 @@ public class LookupEndpoint {
     public Response doLookup(
             @QueryParam("op") String op, @QueryParam("search") String search, @QueryParam("exact") String exact) {
 
-        if (op == null || search == null || search.isBlank()) {
+        // Both null and blank op are invalid — HKP requires a non-empty op parameter.
+        if (op == null || op.isBlank() || search == null || search.isBlank()) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity("Missing required parameters: op and search")
                     .type("text/plain")
@@ -66,7 +66,13 @@ public class LookupEndpoint {
     private Response handleGet(String search, boolean exactMatch) {
         Optional<String> armoredKey = keyRepositoryService.getArmoredKeyBySearch(search, exactMatch);
         if (armoredKey.isEmpty()) {
-            throw new KeyNotFoundException("No key found for: " + search);
+            // Return plain text 404 for consistency with other HKP error responses.
+            // Throwing KeyNotFoundException would invoke the JSON exception mapper,
+            // which mixes content types and confuses HKP clients expecting text/plain.
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity("No key found for the provided search term")
+                    .type("text/plain")
+                    .build();
         }
         return Response.ok(armoredKey.get())
                 .type("application/pgp-keys; charset=us-ascii")

@@ -69,7 +69,11 @@ public class VerifyUidCommandHandler extends AbstractKeyServerCommandHandler<Ver
         VerificationEntry entry = verificationQueueRepository
                 .findPendingById(tokenId)
                 .orElseThrow(() -> new TokenInvalidException(
-                        "Verification token not found or already consumed: " + command.token()));
+                        // Do not echo the token value into the exception message.
+                        // The message is logged by the exception mapper, and including the token
+                        // would: (a) expose a credential-like value in logs, and (b) enable log
+                        // injection if a caller passes an extremely long or control-char-bearing string.
+                        "Verification token not found or already consumed"));
 
         if (entry.expiresAt().isBefore(OffsetDateTime.now())) {
             throw new TokenExpiredException("Verification token has expired for fingerprint " + entry.fingerprint());
@@ -85,7 +89,9 @@ public class VerifyUidCommandHandler extends AbstractKeyServerCommandHandler<Ver
         try {
             return Long.parseUnsignedLong(token);
         } catch (NumberFormatException e) {
-            throw new TokenInvalidException("Verification token is not a valid unsigned integer: " + token);
+            // Do not include the raw token in the message — it is attacker-controlled
+            // and could be arbitrarily long or contain control characters (log injection).
+            throw new TokenInvalidException("Verification token is not a valid unsigned integer");
         }
     }
 

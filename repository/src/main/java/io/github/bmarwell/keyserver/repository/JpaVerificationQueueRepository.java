@@ -24,6 +24,7 @@ import io.hypersistence.tsid.TSID;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Default;
 import jakarta.inject.Inject;
+import jakarta.persistence.LockModeType;
 import jakarta.transaction.Transactional;
 import java.util.Optional;
 
@@ -57,7 +58,13 @@ public class JpaVerificationQueueRepository extends BaseRepository implements Ve
     @Override
     @Transactional
     public Optional<VerificationEntry> findPendingById(long tokenId) {
-        VerificationQueueEntity entity = getEntityManager().find(VerificationQueueEntity.class, tokenId);
+        // PESSIMISTIC_WRITE prevents two concurrent transactions from both reading
+        // PENDING and then both proceeding to publish the same UID (TOCTOU race).
+        // The second transaction will block here until the first commits, at which
+        // point the state is VERIFIED and this method returns empty — effectively
+        // making token consumption a one-time operation under concurrent load.
+        VerificationQueueEntity entity =
+                getEntityManager().find(VerificationQueueEntity.class, tokenId, LockModeType.PESSIMISTIC_WRITE);
         if (entity == null || entity.getState() != VerificationQueueState.PENDING) {
             return Optional.empty();
         }
