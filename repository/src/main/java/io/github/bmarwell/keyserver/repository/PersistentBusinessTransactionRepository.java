@@ -21,6 +21,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import org.jspecify.annotations.Nullable;
 
 /// JPA implementation of `BusinessTransactionRepository`.
 ///
@@ -34,7 +35,7 @@ public class PersistentBusinessTransactionRepository extends BaseRepository impl
 
     @Override
     @Transactional(Transactional.TxType.REQUIRES_NEW)
-    public void recordStarted(long btxId, String commandType, String callerIp) {
+    public void recordStarted(long btxId, String commandType, @Nullable String callerIp) {
         var entity = BusinessTransactionEntity.started(btxId, commandType, callerIp);
         getEntityManager().persist(entity);
         LOG.log(Level.FINE, "BTX {0} STARTED [{1}]", new Object[] {btxId, commandType});

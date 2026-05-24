@@ -37,6 +37,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
     <!-- 3rd party dependencies -->
+    <jspecify.version>1.0.0</jspecify.version>
     <immutables-value.version>2.10.0</immutables-value.version>
     <bouncycastle.version>1.84</bouncycastle.version>
     <hypersistence-tsid.version>2.1.4</hypersistence-tsid.version>
@@ -108,6 +109,13 @@
         <artifactId>microprofile-openapi-api</artifactId>
         <version>4.1.1</version>
         <scope>provided</scope>
+      </dependency>
+
+      <!-- nullability -->
+      <dependency>
+        <groupId>org.jspecify</groupId>
+        <artifactId>jspecify</artifactId>
+        <version>${jspecify.version}</version>
       </dependency>
 
       <!-- 3rd-party -->
@@ -187,6 +195,11 @@
 
   <!-- forced dependencies -->
   <dependencies>
+    <dependency>
+      <groupId>org.jspecify</groupId>
+      <artifactId>jspecify</artifactId>
+    </dependency>
+
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>

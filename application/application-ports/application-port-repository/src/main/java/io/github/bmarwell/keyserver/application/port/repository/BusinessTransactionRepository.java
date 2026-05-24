@@ -15,6 +15,8 @@
  */
 package io.github.bmarwell.keyserver.application.port.repository;
 
+import org.jspecify.annotations.Nullable;
+
 /// Outbound port for business-transaction lifecycle persistence.
 ///
 /// All implementations must use `@Transactional(REQUIRES_NEW)` so that
@@ -28,7 +30,7 @@ public interface BusinessTransactionRepository {
     /// @param btxId       TSID assigned by the command service
     /// @param commandType simple class name of the command
     /// @param callerIp    remote address of the HTTP client, or `null`
-    void recordStarted(long btxId, String commandType, String callerIp);
+    void recordStarted(long btxId, String commandType, @Nullable String callerIp);
 
     /// Updates the row to state `COMPLETED` and sets `completed_at`.
     void recordCompleted(long btxId);

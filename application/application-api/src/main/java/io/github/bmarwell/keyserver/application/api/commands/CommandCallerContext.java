@@ -15,6 +15,8 @@
  */
 package io.github.bmarwell.keyserver.application.api.commands;
 
+import org.jspecify.annotations.Nullable;
+
 /// Caller metadata that travels alongside a command through the dispatch chain.
 ///
 /// Unlike the command record (which carries business payload), `CommandCallerContext`
@@ -29,7 +31,7 @@ package io.github.bmarwell.keyserver.application.api.commands;
 /// is constructed.  No component downstream should receive or store a raw IP.
 ///
 /// Use {@link #empty()} when no caller IP is available (e.g., internally triggered commands).
-public record CommandCallerContext(String anonymizedCallerIp) {
+public record CommandCallerContext(@Nullable String anonymizedCallerIp) {
 
     /// Returns a context with no caller IP (e.g., for internally triggered commands).
     public static CommandCallerContext empty() {

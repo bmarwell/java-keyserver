@@ -23,6 +23,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /// JPA entity for the `audit_log` table.
 /// Every command dispatch writes one row regardless of outcome.
@@ -54,10 +55,10 @@ public class AuditLogEntity {
 
     /// Absent when the fingerprint could not be extracted from malformed input.
     @Column(name = "fingerprint", updatable = false)
-    private String fingerprint;
+    private @Nullable String fingerprint;
 
     @Column(name = "request_ip", updatable = false)
-    private String requestIp;
+    private @Nullable String requestIp;
 
     @Column(name = "occurred_at", nullable = false, updatable = false)
     private OffsetDateTime occurredAt;
@@ -66,14 +67,14 @@ public class AuditLogEntity {
     private String result;
 
     @Column(name = "failure_type", updatable = false)
-    private String failureType;
+    private @Nullable String failureType;
 
     @Column(name = "failure_message", updatable = false)
-    private String failureMessage;
+    private @Nullable String failureMessage;
 
     protected AuditLogEntity() {}
 
-    private AuditLogEntity(long btxId, String commandType, String requestIp, String fingerprint) {
+    private AuditLogEntity(long btxId, String commandType, @Nullable String requestIp, @Nullable String fingerprint) {
         this.btxId = btxId;
         this.commandType = commandType;
         this.requestIp = requestIp;
@@ -81,7 +82,8 @@ public class AuditLogEntity {
         this.occurredAt = OffsetDateTime.now();
     }
 
-    public static AuditLogEntity success(long btxId, String commandType, String requestIp, String fingerprint) {
+    public static AuditLogEntity success(
+            long btxId, String commandType, @Nullable String requestIp, @Nullable String fingerprint) {
         var entry = new AuditLogEntity(btxId, commandType, requestIp, fingerprint);
         entry.result = "SUCCESS";
         return entry;
@@ -90,10 +92,10 @@ public class AuditLogEntity {
     public static AuditLogEntity failure(
             long btxId,
             String commandType,
-            String requestIp,
-            String fingerprint,
+            @Nullable String requestIp,
+            @Nullable String fingerprint,
             String failureType,
-            String failureMessage) {
+            @Nullable String failureMessage) {
         var entry = new AuditLogEntity(btxId, commandType, requestIp, fingerprint);
         entry.result = "FAILURE";
         entry.failureType = failureType;
