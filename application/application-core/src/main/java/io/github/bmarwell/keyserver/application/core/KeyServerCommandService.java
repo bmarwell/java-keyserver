@@ -16,6 +16,7 @@
 package io.github.bmarwell.keyserver.application.core;
 
 import io.github.bmarwell.keyserver.application.api.CommandService;
+import io.github.bmarwell.keyserver.application.api.commands.CommandCallerContext;
 import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommand;
 import io.github.bmarwell.keyserver.application.core.cmdhandler.CommandHandler;
 import io.github.bmarwell.keyserver.application.core.concurrent.BusinessTransactionContext;
@@ -78,16 +79,15 @@ public class KeyServerCommandService implements CommandService, Serializable {
 
     @Asynchronous(executor = "java:app/concurrent/KeyServerCommandExecutor")
     @Override
-    public <T extends KeyServerCommand> void handleCommand(T keyServerCommand) {
+    public <T extends KeyServerCommand> void handleCommand(T keyServerCommand, CommandCallerContext callerContext) {
         long btxId = tsidFactory.generate().toLong();
         String commandType = keyServerCommand.getClass().getSimpleName();
 
-        btxRepository.recordStarted(
-                btxId, commandType, keyServerCommand.callerIp().orElse(null));
+        btxRepository.recordStarted(btxId, commandType, callerContext.anonymizedCallerIp());
         btxContext.initialize(btxId);
 
         try {
-            dispatch(keyServerCommand);
+            dispatch(keyServerCommand, callerContext);
             btxRepository.recordCompleted(btxId);
         } catch (Exception ex) {
             btxRepository.recordFailed(btxId, ex.getClass().getSimpleName(), ex.getMessage());
@@ -99,14 +99,14 @@ public class KeyServerCommandService implements CommandService, Serializable {
 
     @Transactional
     @SuppressWarnings("unchecked")
-    private <T extends KeyServerCommand> void dispatch(T command) {
+    private <T extends KeyServerCommand> void dispatch(T command, CommandCallerContext callerContext) {
         CommandHandler<T> handler = (CommandHandler<T>) commandHandlers.stream()
                 .filter(ch -> ch.canHandle(command))
                 .findFirst()
                 .orElseThrow(() -> new UnsupportedOperationException(
                         "No CommandHandler for: " + command.getClass().getName()));
 
-        handler.execute(command);
+        handler.execute(command, callerContext);
     }
 
     // CDI-friendly setters for testing

@@ -15,14 +15,15 @@
  */
 package io.github.bmarwell.keyserver.application.core.cmdhandler;
 
+import io.github.bmarwell.keyserver.application.api.commands.CommandCallerContext;
 import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommand;
 import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommandResponse;
 
 public abstract class AbstractKeyServerCommandHandler<T extends KeyServerCommand> implements CommandHandler<T> {
 
-    public KeyServerCommandResponse execute(KeyServerCommand command) {
-        return doExecute((T) command);
+    public KeyServerCommandResponse execute(KeyServerCommand command, CommandCallerContext callerContext) {
+        return doExecute((T) command, callerContext);
     }
 
-    abstract KeyServerCommandResponse doExecute(T command);
+    abstract KeyServerCommandResponse doExecute(T command, CommandCallerContext callerContext);
 }

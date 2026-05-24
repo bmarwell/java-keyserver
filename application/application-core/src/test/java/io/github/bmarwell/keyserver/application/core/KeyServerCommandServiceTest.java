@@ -17,6 +17,7 @@ package io.github.bmarwell.keyserver.application.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.github.bmarwell.keyserver.application.api.commands.CommandCallerContext;
 import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommand;
 import io.github.bmarwell.keyserver.application.core.concurrent.BusinessTransactionContext;
 import io.github.bmarwell.keyserver.application.port.repository.BusinessTransactionRepository;
@@ -40,7 +41,7 @@ class KeyServerCommandServiceTest {
                 TSID.Factory.builder().withNodeBits(10).withNode(0).build());
 
         // when: @Asynchronous is not intercepted in unit tests — runs synchronously
-        service.handleCommand(noopCommand);
+        service.handleCommand(noopCommand, CommandCallerContext.empty());
 
         // then: BTX was started and then recorded as failed with the exception type
         assertThat(trackingRepo.startedCount).isEqualTo(1);

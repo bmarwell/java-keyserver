@@ -17,6 +17,7 @@ package io.github.bmarwell.keyserver.web.pks;
 
 import io.github.bmarwell.keyserver.application.api.CommandService;
 import io.github.bmarwell.keyserver.application.api.commands.AddKeyToVerificationQueueCommand;
+import io.github.bmarwell.keyserver.application.api.commands.CommandCallerContext;
 import io.github.bmarwell.keyserver.common.ids.IpAnonymizer;
 import jakarta.inject.Inject;
 import jakarta.servlet.http.HttpServletRequest;
@@ -57,8 +58,9 @@ public class AddEndpoint {
     public Response addKey(@RequestBody @FormParam("keytext") String keyText) {
         String rawIp = httpServletRequest.getRemoteAddr();
         String anonymizedIp = IpAnonymizer.anonymize(rawIp);
-        var command = new AddKeyToVerificationQueueCommand(keyText, anonymizedIp);
-        commandService.handleCommand(command);
+        var command = new AddKeyToVerificationQueueCommand(keyText);
+        var callerCtx = CommandCallerContext.of(anonymizedIp);
+        commandService.handleCommand(command, callerCtx);
         return Response.accepted().build();
     }
 

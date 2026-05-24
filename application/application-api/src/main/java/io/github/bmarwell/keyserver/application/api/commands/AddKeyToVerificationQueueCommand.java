@@ -15,29 +15,15 @@
  */
 package io.github.bmarwell.keyserver.application.api.commands;
 
-import java.util.Optional;
-
 /// Command to submit a PGP public key for email-based ownership verification.
 ///
 /// The primary adapter (`AddEndpoint`) reads the ASCII-armored key text from the
-/// HTTP request body **synchronously**, anonymizes the caller's IP, and then
-/// builds this command before handing it to `CommandService`.  Passing a
-/// `String` (rather than an `InputStream`) avoids a closed-stream race when the
-/// virtual-thread executor picks up the command after the HTTP thread returns.
+/// HTTP request body **synchronously** and builds this command before handing it
+/// to `CommandService`.  Passing a `String` (rather than an `InputStream`) avoids
+/// a closed-stream race when the virtual-thread executor picks up the command after
+/// the HTTP thread returns.
 ///
-/// The `anonymizedClientIp` field must already be anonymized (IPv4 last octet
-/// zeroed, IPv6 last 80 bits zeroed) before this record is constructed.  No
-/// downstream component should receive or store a raw IP.
-///
-/// The anonymized IP is forwarded to the BTX audit row automatically via
-/// {@link #callerIp()} — see implementation-plan §8.7.
-public record AddKeyToVerificationQueueCommand(String keyText, String anonymizedClientIp) implements KeyServerCommand {
-
-    @Override
-    public Optional<String> callerIp() {
-        if (anonymizedClientIp == null || anonymizedClientIp.isBlank()) {
-            return Optional.empty();
-        }
-        return Optional.of(anonymizedClientIp);
-    }
-}
+/// Caller metadata (anonymized IP) is **not** part of this record.  It travels in
+/// the accompanying {@link CommandCallerContext} so that command records stay focused
+/// on business payload.  See implementation-plan §8.7.
+public record AddKeyToVerificationQueueCommand(String keyText) implements KeyServerCommand {}

@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.github.bmarwell.keyserver.application.api.commands.AddKeyToVerificationQueueCommand;
+import io.github.bmarwell.keyserver.application.api.commands.CommandCallerContext;
 import io.github.bmarwell.keyserver.application.api.ex.KeyParsingException;
 import io.github.bmarwell.keyserver.application.port.notification.VerificationNotificationPort;
 import io.github.bmarwell.keyserver.application.port.repository.VerificationQueueRepository;
@@ -83,9 +84,9 @@ class AddKeyToVerificationQueueCommandHandlerTest {
     @Test
     void happy_path_enqueues_one_entry_per_uid() throws IOException {
         String keyText = loadTestKey("test-key-with-email.asc");
-        var command = new AddKeyToVerificationQueueCommand(keyText, "192.168.1.0");
+        var command = new AddKeyToVerificationQueueCommand(keyText);
 
-        handler.doExecute(command);
+        handler.doExecute(command, CommandCallerContext.empty());
 
         // The test key has one UID: "Test Key <testkey@example.com>"
         assertThat(fakeRepo.received).hasSize(1);
@@ -96,9 +97,9 @@ class AddKeyToVerificationQueueCommandHandlerTest {
     @Test
     void happy_path_notifies_once_per_uid() throws IOException {
         String keyText = loadTestKey("test-key-with-email.asc");
-        var command = new AddKeyToVerificationQueueCommand(keyText, "10.0.0.0");
+        var command = new AddKeyToVerificationQueueCommand(keyText);
 
-        handler.doExecute(command);
+        handler.doExecute(command, CommandCallerContext.empty());
 
         assertThat(fakeNotification.received).hasSize(1);
         FakeNotificationPort.Notification note = fakeNotification.received.getFirst();
@@ -108,25 +109,28 @@ class AddKeyToVerificationQueueCommandHandlerTest {
 
     @Test
     void rejects_null_key_text() {
-        var command = new AddKeyToVerificationQueueCommand(null, "10.0.0.0");
+        var command = new AddKeyToVerificationQueueCommand(null);
 
-        assertThatThrownBy(() -> handler.doExecute(command)).isInstanceOf(KeyParsingException.class);
+        assertThatThrownBy(() -> handler.doExecute(command, CommandCallerContext.empty()))
+                .isInstanceOf(KeyParsingException.class);
         assertThat(fakeRepo.received).isEmpty();
     }
 
     @Test
     void rejects_blank_key_text() {
-        var command = new AddKeyToVerificationQueueCommand("   ", "10.0.0.0");
+        var command = new AddKeyToVerificationQueueCommand("   ");
 
-        assertThatThrownBy(() -> handler.doExecute(command)).isInstanceOf(KeyParsingException.class);
+        assertThatThrownBy(() -> handler.doExecute(command, CommandCallerContext.empty()))
+                .isInstanceOf(KeyParsingException.class);
         assertThat(fakeRepo.received).isEmpty();
     }
 
     @Test
     void rejects_garbage_key_text() {
-        var command = new AddKeyToVerificationQueueCommand("not a pgp key", "10.0.0.0");
+        var command = new AddKeyToVerificationQueueCommand("not a pgp key");
 
-        assertThatThrownBy(() -> handler.doExecute(command)).isInstanceOf(KeyParsingException.class);
+        assertThatThrownBy(() -> handler.doExecute(command, CommandCallerContext.empty()))
+                .isInstanceOf(KeyParsingException.class);
         assertThat(fakeRepo.received).isEmpty();
         assertThat(fakeNotification.received).isEmpty();
     }
@@ -134,9 +138,9 @@ class AddKeyToVerificationQueueCommandHandlerTest {
     @Test
     void verification_uri_contains_tsid_of_enqueued_entry() throws IOException {
         String keyText = loadTestKey("test-key-with-email.asc");
-        var command = new AddKeyToVerificationQueueCommand(keyText, "10.0.0.0");
+        var command = new AddKeyToVerificationQueueCommand(keyText);
 
-        handler.doExecute(command);
+        handler.doExecute(command, CommandCallerContext.empty());
 
         String expectedTsidStr = Long.toUnsignedString(1000L); // first ID assigned by fake repo
         assertThat(fakeNotification.received.getFirst().verificationUri().toString())

@@ -15,6 +15,7 @@
  */
 package io.github.bmarwell.keyserver.application.core.cmdhandler;
 
+import io.github.bmarwell.keyserver.application.api.commands.CommandCallerContext;
 import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommand;
 import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommandResponse;
 
@@ -22,5 +23,5 @@ public interface CommandHandler<T extends KeyServerCommand> {
 
     <C extends KeyServerCommand> boolean canHandle(C command);
 
-    KeyServerCommandResponse execute(KeyServerCommand command);
+    KeyServerCommandResponse execute(KeyServerCommand command, CommandCallerContext callerContext);
 }

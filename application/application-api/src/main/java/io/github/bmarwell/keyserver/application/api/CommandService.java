@@ -15,6 +15,7 @@
  */
 package io.github.bmarwell.keyserver.application.api;
 
+import io.github.bmarwell.keyserver.application.api.commands.CommandCallerContext;
 import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommand;
 
 public interface CommandService {
@@ -24,5 +25,9 @@ public interface CommandService {
     /// The command runs asynchronously inside a business transaction (BTX).
     /// Any failure is recorded in the BTX audit row and logged; it does NOT
     /// propagate back to the caller.
-    <T extends KeyServerCommand> void handleCommand(T keyServerCommand);
+    ///
+    /// @param keyServerCommand the command to execute
+    /// @param callerContext    caller metadata (pre-anonymized IP, etc.); use
+    ///                         {@link CommandCallerContext#empty()} if unavailable
+    <T extends KeyServerCommand> void handleCommand(T keyServerCommand, CommandCallerContext callerContext);
 }
