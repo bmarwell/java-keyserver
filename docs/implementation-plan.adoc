@@ -382,43 +382,46 @@ Each mapper must:
 
 === 5.1 Current State
 
-`PersistentKeyQueueRepositoryService` carries `@Transactional`.  The command
-handlers and `KeyServerCommandService` do not.  This means the boundary is too
-low: only the DAO call is in a transaction, not the full parse-validate-persist
-flow.
+`KeyServerCommandService` dispatches commands via an async virtual-thread executor.
+The actual handler invocation is delegated to `TransactionalCommandDispatcher` — a
+separate `@ApplicationScoped` CDI bean — so the `@Transactional` annotation is
+applied through the CDI proxy rather than bypassed by same-bean self-invocation.
+Handler DAO calls therefore run in a single JTA `REQUIRED` transaction.  BTX
+lifecycle writes (`recordStarted`, `recordCompleted`, `recordFailed`) use
+`REQUIRES_NEW` so they survive a handler rollback.
 
 === 5.2 Target State
 
-`KeyServerCommandService.handleCommand()` should be annotated `@Transactional`
-so the entire command lifecycle (parse, validate, persist, enqueue) is one atomic
-unit.
+The current implementation already achieves the target:
 
-* On success: the DAO write and the audit log entry commit together.
-* On failure: the main transaction rolls back, but the audit log write should
-  succeed.  Use a _separate_ transaction for the audit log entry
-  (`@Transactional(Transactional.TxType.REQUIRES_NEW)` on an `AuditLogService`).
-
-The `PersistentKeyQueueRepositoryService` can keep its `@Transactional` as a
-safety net but becomes effectively `MANDATORY` (the transaction is already open).
+* `dispatch()` lives in `TransactionalCommandDispatcher` (separate bean), so
+  `@Transactional` fires correctly through the CDI proxy.
+* Each BTX write uses `REQUIRES_NEW`.
+* ✅ The anonymized caller IP is forwarded to `recordStarted()` via `CommandCallerContext`
+  (see §8.7).
+* A `fingerprint` field on `business_transactions` should be populated once the
+  handler can extract it (post-parse).
 
 === 5.3 Audit Log Integration
 
-The `CommandService` should inject an `AuditLogService` and wrap every handler
-invocation:
+BTX rows serve as the audit log via the `BusinessTransactionRepository` port.
+`KeyServerCommandService` wraps every handler call in the following pattern:
 
 [source,java]
 ----
+btxRepository.recordStarted(btxId, commandType, callerContext.anonymizedCallerIp());
+btxContext.initialize(btxId);
 try {
-    result = handler.execute(command);
-    auditLogService.recordSuccess(command, correlationId, fingerprint);
-} catch (KeyServerException ex) {
-    auditLogService.recordFailure(command, correlationId, ex);
-    throw ex;
+    dispatcher.dispatch(command, callerContext);  // @Transactional in separate bean
+    btxRepository.recordCompleted(btxId);
+} catch (Exception ex) {
+    btxRepository.recordFailed(btxId, ex.getClass().getSimpleName(), ex.getMessage());
 }
 ----
 
-`AuditLogService` (port in `application-ports`) is implemented by a JPA adapter
-in `repository`.  Its write always uses `REQUIRES_NEW` so it survives a rollback.
+`BusinessTransactionRepository` (port in `application-ports`) is implemented by
+`PersistentBusinessTransactionRepository` in `repository`.  Every write uses
+`REQUIRES_NEW` so it survives a rollback.
 
 == 6. What Needs to Change Per Module
 
@@ -440,41 +443,32 @@ in `repository`.  Its write always uses `REQUIRES_NEW` so it survives a rollback
 
 === 6.3 `application/application-core`
 
-* Annotate `KeyServerCommandService.handleCommand()` with `@Transactional`.
-* Inject `AuditLogService` and wrap handler calls (see §5.3).
-* Add `KeyServerQueryService` for read-only lookups (no `@Transactional` write
-  semantics needed — `@Transactional(READ_ONLY)` is sufficient).
-* Complete `AddKeyToVerificationQueueCommandHandler`:
-  - Parse armored input via Bouncy Castle.
-  - Validate: reject expired primary key, reject revoked primary key, drop UIDs
-    without email address, drop UIDs that are revoked or expired.
-  - For each remaining UID, enqueue a verification queue entry.
-  - Return a typed response indicating how many UIDs were queued.
+* ✅ `KeyServerCommandService.handleCommand()` is async (`@Asynchronous`, virtual threads);
+  `dispatch()` carries `@Transactional`.
+* ✅ BTX lifecycle wiring complete.
+* ✅ `AddKeyToVerificationQueueCommandHandler` implemented.
+* Add `KeyServerQueryService` for read-only lookups (`@Transactional(READ_ONLY)`).
 
 === 6.4 `application/application-ports`
 
-* Add `AuditLogPort` (write audit entries).
-* Expand `KeyVerificationQueueDao` with richer parameters matching the new
-  schema.
-* Add `KeyDao` (replaces stub `KeyRepository`) with methods for fingerprint/
-  keyid lookup and insert.
-* Add `UidDao` for UID-level reads needed by `op=index`.
+* ✅ `BusinessTransactionRepository` — BTX lifecycle port (replaces the former `AuditLogPort` idea).
+* ✅ `VerificationQueueRepository` — replaces the former `KeyVerificationQueueDao`.
+* Add `KeyRepository` (replaces stub) with methods for fingerprint/key-ID lookup and insert.
+* Add `UidRepository` for UID-level reads needed by `op=index`.
 
 === 6.5 `repository`
 
-* Implement JPA entities for: `KeyEntity`, `UidEntity`, `VerificationQueueEntity`,
-  `AuditLogEntity`.
-* Implement DAOs.
-* Add Flyway migrations: `V003__expand-keys.sql`, `V004__create-uids.sql`,
-  `V005__create-verification-queue.sql`, `V006__create-audit-log.sql`.
-* Enable `pgcrypto` extension is no longer needed — PKs use TSID (application-assigned `BIGINT`).
+* ✅ `BusinessTransactionEntity` + `PersistentBusinessTransactionRepository`.
+* ✅ `VerificationQueueEntity` + `JpaVerificationQueueRepository`.
+* Add JPA entities: `KeyEntity`, `UidEntity`.
+* Add Flyway migrations for the new tables (see §2).
 
 === 6.6 `web/openpgp-keyserver-protocol`
 
-* `AddEndpoint`: accept `application/x-www-form-urlencoded`, read `keytext`
-  form parameter.
-* `LookupEndpoint`: implement `op=index` and `op=vindex` with
-  machine-readable output.  Honor `options=mr` and `exact=on`.
+* ✅ `AddEndpoint`: `application/x-www-form-urlencoded`, `keytext` form parameter,
+  IP anonymization via `IpAnonymizer`.
+* `LookupEndpoint`: implement `op=index` and `op=vindex` with machine-readable
+  output.  Honor `options=mr` and `exact=on`.
 * Add `KeyServerExceptionMapper` implementing `ExceptionMapper<KeyServerException>`.
 * Add `InvalidKeyIdExceptionMapper` for the `common/ids` parsing error.
 
@@ -497,9 +491,9 @@ in `repository`.  Its write always uses `REQUIRES_NEW` so it survives a rollback
 * *Synchronization*: Multi-keyserver sync is out of scope for now.  The
   `RepositoryName` value object is in place but the sync protocol is not planned.
 
-== 7. Business Transactions (BTX)
+== 8. Business Transactions (BTX)
 
-=== 7.1 Motivation
+=== 8.1 Motivation
 
 Every write command (add key, verify UID, revoke key) must be traceable end-to-end
 so that administrators can answer questions like:
@@ -514,7 +508,7 @@ from entry to final state, survives JTA rollbacks (it writes its own status in a
 separate JTA transaction), and is stored permanently in the `business_transactions`
 table for audit purposes.
 
-=== 7.2 Business Transaction Table
+=== 8.2 Business Transaction Table
 
 [source,sql]
 ----
@@ -532,7 +526,7 @@ CREATE TABLE business_transactions (
 
 The `audit_log` table gains a non-nullable foreign key `btx_id BIGINT REFERENCES business_transactions(id)`.
 
-=== 7.3 BTX ID Strategy
+=== 8.3 BTX ID Strategy
 
 BTX IDs use the same TSID approach as `verification_queue`, but via a *node-aware*
 `TsidFactory` rather than `TSID.fast()`.
@@ -563,7 +557,7 @@ A CDI `@ApplicationScoped` producer creates the `TsidFactory` once at startup,
 reading `TSID_NODE` from the environment (or falling back to 0).  All components
 that need a TSID inject the factory rather than calling `TSID.fast()`.
 
-=== 7.4 Asynchronous Command Execution
+=== 8.4 Asynchronous Command Execution
 
 `KeyServerCommandService.handleCommand()` is annotated with
 `@ManagedExecutorDefinition` (Jakarta Concurrency 3.1) to define a dedicated
@@ -600,7 +594,7 @@ plain `Response` (synchronous); they call `handleCommand()` then return
 `202 Accepted` immediately without any `CompletableFuture` or `CompletionStage`
 in their signatures.
 
-=== 7.5 BTX Lifecycle Within handleCommand()
+=== 8.5 BTX Lifecycle Within handleCommand()
 
 [source]
 ----
@@ -620,7 +614,7 @@ Jakarta Concurrency 3.1 propagates the CDI request context to the async thread,
 so the `@RequestScoped` `BusinessTransactionContext` bean is available throughout
 the handler's stack without any explicit parameter threading.
 
-=== 7.6 Modules Affected
+=== 8.6 Modules Affected
 
 [cols="1,3"]
 |===
@@ -644,17 +638,21 @@ the handler's stack without any explicit parameter threading.
 |Resource methods return plain `Response` (synchronous, `202 Accepted`)
 |===
 
-=== 7.7 Client IP and Audit Trail
+=== 8.7 Client IP and Audit Trail
 
 The client IP address is captured and anonymized in the primary adapter
 (`AddEndpoint`) before the command is constructed.  The anonymized value is
-carried in the command record (`AddKeyToVerificationQueueCommand.anonymizedClientIp`)
-for future wiring into the BTX audit row.
+carried in a `CommandCallerContext` that travels alongside the command — it is
+**not** a field on the command record itself.
 
-Once `BusinessTransactionRepository.recordStarted()` is extended to accept
-optional metadata, the anonymized IP should be written there so administrators
-can correlate submissions with network-level events without ever persisting
-a raw client IP.
+`AddEndpoint` calls `IpAnonymizer.anonymize(remoteAddr)`, wraps the result in
+`CommandCallerContext.of(anonymizedIp)`, and passes both the command and the
+context to `CommandService.handleCommand(command, callerContext)`.
+`KeyServerCommandService` extracts `callerContext.anonymizedCallerIp()` and
+passes it to `BusinessTransactionRepository.recordStarted()`, wiring the
+anonymized IP into the BTX audit row.  The context is also forwarded through
+`TransactionalCommandDispatcher` to each handler's `execute()` method in case a
+handler needs it in the future.
 
 Rules:
 
@@ -665,7 +663,7 @@ Rules:
   headers.  Configure the proxy to strip and re-add those headers at the network
   edge if needed.
 
-== 8. Verification Notification (First Iteration: Log Only)
+== 9. Verification Notification (First Iteration: Log Only)
 
 The first iteration uses `LoggingVerificationNotificationAdapter` to deliver the
 verification URI.  This deliberately logs the full URI (which is a bearer token)

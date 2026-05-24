@@ -13,15 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.github.bmarwell.keyserver.application.core.cmdhandler;
 
-import io.github.bmarwell.keyserver.application.api.commands.CommandCallerContext;
-import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommand;
-import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommandResponse;
+/// Command types and caller-context value objects for the primary application port.
+///
+/// All types in this package are non-null by default (jspecify `@NullMarked`).
+/// Fields and parameters that may be `null` are explicitly annotated with
+/// {@link org.jspecify.annotations.Nullable}.
+@NullMarked
+package io.github.bmarwell.keyserver.application.api.commands;
 
-public interface CommandHandler<T extends KeyServerCommand> {
-
-    <C extends KeyServerCommand> boolean canHandle(C command);
-
-    KeyServerCommandResponse execute(KeyServerCommand command, CommandCallerContext callerContext);
-}
+import org.jspecify.annotations.NullMarked;

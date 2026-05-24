@@ -16,6 +16,7 @@
 package io.github.bmarwell.keyserver.application.core.cmdhandler;
 
 import io.github.bmarwell.keyserver.application.api.commands.AddKeyToVerificationQueueCommand;
+import io.github.bmarwell.keyserver.application.api.commands.CommandCallerContext;
 import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommand;
 import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommandResponse;
 import io.github.bmarwell.keyserver.application.api.ex.KeyParsingException;
@@ -64,12 +65,12 @@ import org.bouncycastle.openpgp.operator.bc.BcKeyFingerprintCalculator;
 /// Tokens expire after {@value #TOKEN_TTL_HOURS} hours by default.  A future
 /// iteration will make this configurable via MicroProfile Config.
 ///
-/// ## anonymizedClientIp
+/// ## Caller context
 ///
-/// The command carries the pre-anonymized client IP for audit purposes.
-/// It is not persisted here — it will be written to the BTX audit row once
-/// `BusinessTransactionRepository.recordStarted()` is extended to accept
-/// optional metadata (see implementation-plan §7.7).
+/// The `CommandCallerContext` carries the pre-anonymized caller IP for audit
+/// purposes.  This handler does not need the IP directly — it was already
+/// forwarded to the BTX audit row by `KeyServerCommandService`.  The parameter
+/// is present to satisfy the handler contract (see implementation-plan §8.7).
 @RequestScoped
 public class AddKeyToVerificationQueueCommandHandler
         extends AbstractKeyServerCommandHandler<AddKeyToVerificationQueueCommand> {
@@ -88,7 +89,7 @@ public class AddKeyToVerificationQueueCommandHandler
     }
 
     @Override
-    KeyServerCommandResponse doExecute(AddKeyToVerificationQueueCommand command) {
+    KeyServerCommandResponse doExecute(AddKeyToVerificationQueueCommand command, CommandCallerContext callerContext) {
         if (command.keyText() == null || command.keyText().isBlank()) {
             throw new KeyParsingException("keytext must not be null or blank");
         }

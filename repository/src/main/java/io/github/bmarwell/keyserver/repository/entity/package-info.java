@@ -13,15 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.github.bmarwell.keyserver.application.core.cmdhandler;
 
-import io.github.bmarwell.keyserver.application.api.commands.CommandCallerContext;
-import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommand;
-import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommandResponse;
+/// JPA entity classes for the keyserver persistence layer.
+///
+/// All types in this package are non-null by default (jspecify `@NullMarked`).
+/// Optional / database-nullable columns are annotated with
+/// {@link org.jspecify.annotations.Nullable} on the corresponding field and
+/// every method parameter that accepts a `null` value.
+@NullMarked
+package io.github.bmarwell.keyserver.repository.entity;
 
-public interface CommandHandler<T extends KeyServerCommand> {
-
-    <C extends KeyServerCommand> boolean canHandle(C command);
-
-    KeyServerCommandResponse execute(KeyServerCommand command, CommandCallerContext callerContext);
-}
+import org.jspecify.annotations.NullMarked;

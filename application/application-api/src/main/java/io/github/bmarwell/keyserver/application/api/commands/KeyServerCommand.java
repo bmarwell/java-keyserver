@@ -15,4 +15,9 @@
  */
 package io.github.bmarwell.keyserver.application.api.commands;
 
+/// Marker interface for all commands dispatched through the
+/// {@link io.github.bmarwell.keyserver.application.api.CommandService}.
+///
+/// Commands carry business payload only.  Execution metadata (caller IP, etc.)
+/// travels in the accompanying {@link CommandCallerContext}.
 public interface KeyServerCommand {}

@@ -24,6 +24,7 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /// JPA entity for the `business_transactions` table.
 ///
@@ -52,10 +53,10 @@ public class BusinessTransactionEntity {
     private String commandType;
 
     @Column(name = "fingerprint")
-    private String fingerprint;
+    private @Nullable String fingerprint;
 
     @Column(name = "caller_ip")
-    private String callerIp;
+    private @Nullable String callerIp;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "state", nullable = false)
@@ -65,13 +66,13 @@ public class BusinessTransactionEntity {
     private OffsetDateTime startedAt;
 
     @Column(name = "completed_at")
-    private OffsetDateTime completedAt;
+    private @Nullable OffsetDateTime completedAt;
 
     @Column(name = "error_type")
-    private String errorType;
+    private @Nullable String errorType;
 
     @Column(name = "error_message")
-    private String errorMessage;
+    private @Nullable String errorMessage;
 
     protected BusinessTransactionEntity() {}
 
@@ -87,7 +88,7 @@ public class BusinessTransactionEntity {
     /// Callers are responsible for supplying a TSID from the shared node-aware
     /// `TsidFactory` — never from `TSID.fast()` — to guarantee uniqueness
     /// across all server instances.
-    public static BusinessTransactionEntity started(long tsid, String commandType, String callerIp) {
+    public static BusinessTransactionEntity started(long tsid, String commandType, @Nullable String callerIp) {
         var entity = new BusinessTransactionEntity();
         entity.id = tsid;
         entity.commandType = commandType;
@@ -101,7 +102,7 @@ public class BusinessTransactionEntity {
         this.completedAt = OffsetDateTime.now();
     }
 
-    public void markFailed(String errorType, String errorMessage) {
+    public void markFailed(String errorType, @Nullable String errorMessage) {
         this.state = BusinessTransactionState.FAILED;
         this.completedAt = OffsetDateTime.now();
         this.errorType = errorType;
