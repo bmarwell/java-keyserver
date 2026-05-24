@@ -15,28 +15,72 @@
  */
 package io.github.bmarwell.keyserver.application.core.cmdhandler;
 
-import io.github.bmarwell.keyserver.application.api.KeyQueueRepositoryService;
 import io.github.bmarwell.keyserver.application.api.commands.AddKeyToVerificationQueueCommand;
 import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommand;
 import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommandResponse;
-import io.github.bmarwell.keyserver.port.mail.MailService;
+import io.github.bmarwell.keyserver.application.api.ex.KeyParsingException;
+import io.github.bmarwell.keyserver.application.api.ex.KeyRevokedException;
+import io.github.bmarwell.keyserver.application.api.ex.NoVerifiableUidException;
+import io.github.bmarwell.keyserver.application.port.notification.VerificationNotificationPort;
+import io.github.bmarwell.keyserver.application.port.repository.VerificationQueueRepository;
+import io.github.bmarwell.keyserver.application.port.repository.VerificationQueueRepository.VerificationRequest;
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.Iterator;
-import org.bouncycastle.openpgp.*;
+import java.util.List;
+import org.bouncycastle.openpgp.PGPException;
+import org.bouncycastle.openpgp.PGPPublicKey;
+import org.bouncycastle.openpgp.PGPPublicKeyRing;
+import org.bouncycastle.openpgp.PGPPublicKeyRingCollection;
+import org.bouncycastle.openpgp.PGPUtil;
 import org.bouncycastle.openpgp.operator.bc.BcKeyFingerprintCalculator;
-import org.bouncycastle.util.encoders.Hex;
 
+/// Handles the {@link AddKeyToVerificationQueueCommand}.
+///
+/// ## What this handler does
+///
+/// 1. Parses the ASCII-armored key text with Bouncycastle.
+/// 2. For each key ring in the submission, locates the master key.
+/// 3. Rejects keys that are revoked (has a direct-key revocation signature).
+/// 4. Collects only the UIDs that contain an email address (heuristic: must
+///    have exactly one `@`, no whitespace or control characters; the full
+///    `<local@domain>` form inside angle brackets is also supported).
+/// 5. Throws {@link NoVerifiableUidException} if no email-bearing UID survives.
+/// 6. Enqueues one {@link VerificationRequest} per surviving UID via the
+///    {@link VerificationQueueRepository} port.  The TSID returned by the
+///    adapter is used to construct the verification URI.
+/// 7. Notifies via {@link VerificationNotificationPort} (first iteration: logs
+///    the URI; later: sends email).
+///
+/// ## Expiry
+///
+/// Tokens expire after {@value #TOKEN_TTL_HOURS} hours by default.  A future
+/// iteration will make this configurable via MicroProfile Config.
+///
+/// ## anonymizedClientIp
+///
+/// The command carries the pre-anonymized client IP for audit purposes.
+/// It is not persisted here — it will be written to the BTX audit row once
+/// `BusinessTransactionRepository.recordStarted()` is extended to accept
+/// optional metadata (see implementation-plan §7.7).
 @RequestScoped
 public class AddKeyToVerificationQueueCommandHandler
         extends AbstractKeyServerCommandHandler<AddKeyToVerificationQueueCommand> {
 
-    @Inject
-    KeyQueueRepositoryService keyQueueRepositoryService;
+    static final int TOKEN_TTL_HOURS = 24;
 
     @Inject
-    MailService mailService;
+    VerificationQueueRepository verificationQueueRepository;
+
+    @Inject
+    VerificationNotificationPort notificationPort;
 
     @Override
     public <C extends KeyServerCommand> boolean canHandle(C command) {
@@ -45,59 +89,127 @@ public class AddKeyToVerificationQueueCommandHandler
 
     @Override
     KeyServerCommandResponse doExecute(AddKeyToVerificationQueueCommand command) {
-        try (var decoderStream = PGPUtil.getDecoderStream(command.asciiArmoredKeyRing())) {
-            PGPPublicKeyRingCollection pgpPub =
-                    new PGPPublicKeyRingCollection(decoderStream, new BcKeyFingerprintCalculator());
-
-            for (Iterator<PGPPublicKeyRing> rings = pgpPub.getKeyRings(); rings.hasNext(); ) {
-                PGPPublicKeyRing keyring = rings.next();
-
-                for (Iterator<PGPPublicKey> keys = keyring.getPublicKeys(); keys.hasNext(); ) {
-                    PGPPublicKey key = keys.next();
-
-                    System.out.println("next key");
-                    System.out.println("is master key: " + key.isMasterKey());
-                    System.out.println("can encrypt: " + key.isEncryptionKey());
-                    System.out.println("algo: " + key.getAlgorithm());
-                    System.out.println("bits: " + key.getBitStrength());
-
-                    for (Iterator<String> userIds = key.getUserIDs(); userIds.hasNext(); ) {
-                        String userId = userIds.next();
-                        System.out.println(userId);
-                    }
-
-                    System.out.println(Long.toHexString(key.getKeyID()));
-                    System.out.println(Hex.toHexString(key.getFingerprint()));
-                }
-            }
-        } catch (IOException | PGPException e) {
-            throw new RuntimeException(e);
+        if (command.keyText() == null || command.keyText().isBlank()) {
+            throw new KeyParsingException("keytext must not be null or blank");
         }
 
-        this.keyQueueRepositoryService.addKeyToRepository(command.repositoryName(), null);
-        // TODO: when successful, send verification mail
-        // TODO: need a verification of all UIDs (mail addresses, if exist)
-        // TODO: drop UIDs without mail address
-        // TODO: drop revoked
-        // TODO: drop expired
-        // TODO: drop "created in future"
+        PGPPublicKeyRingCollection keyRingCollection = parseKeyText(command.keyText());
 
-        throw new UnsupportedOperationException("not implemented");
+        if (!keyRingCollection.iterator().hasNext()) {
+            throw new KeyParsingException("Key text contains no valid OpenPGP key rings");
+        }
+
+        for (Iterator<PGPPublicKeyRing> rings = keyRingCollection.getKeyRings(); rings.hasNext(); ) {
+            PGPPublicKeyRing keyRing = rings.next();
+            processKeyRing(keyRing, command.keyText());
+        }
+
+        return KeyServerCommandResponse.success();
     }
 
-    public KeyQueueRepositoryService getKeyQueueRepositoryService() {
-        return keyQueueRepositoryService;
+    private void processKeyRing(PGPPublicKeyRing keyRing, String armoredKey) {
+        PGPPublicKey masterKey = keyRing.getPublicKey();
+
+        if (masterKey.hasRevocation()) {
+            throw new KeyRevokedException(
+                    "Master key %s is revoked".formatted(fingerprintHex(masterKey)), () -> fingerprintHex(masterKey));
+        }
+
+        List<String> emailUids = collectEmailUids(masterKey);
+        if (emailUids.isEmpty()) {
+            throw new NoVerifiableUidException(
+                    "Key %s has no UIDs with a verifiable email address".formatted(fingerprintHex(masterKey)));
+        }
+
+        String fingerprint = fingerprintHex(masterKey);
+        OffsetDateTime expiresAt = OffsetDateTime.now().plusHours(TOKEN_TTL_HOURS);
+
+        for (String uid : emailUids) {
+            String email = extractEmail(uid);
+            var request = new VerificationRequest(fingerprint, uid, email, armoredKey, expiresAt);
+            long tsid = verificationQueueRepository.enqueue(request);
+            URI verificationUri = buildVerificationUri(tsid);
+            notificationPort.notifyPendingVerification(email, fingerprint, verificationUri);
+        }
     }
 
-    public void setKeyQueueRepositoryService(KeyQueueRepositoryService keyQueueRepositoryService) {
-        this.keyQueueRepositoryService = keyQueueRepositoryService;
+    private PGPPublicKeyRingCollection parseKeyText(String keyText) {
+        try {
+            byte[] keyBytes = keyText.getBytes(StandardCharsets.UTF_8);
+            try (var decoderStream = PGPUtil.getDecoderStream(new ByteArrayInputStream(keyBytes))) {
+                return new PGPPublicKeyRingCollection(decoderStream, new BcKeyFingerprintCalculator());
+            }
+        } catch (IOException | PGPException e) {
+            throw new KeyParsingException("Failed to parse PGP key: " + e.getMessage(), e);
+        }
     }
 
-    public MailService getMailService() {
-        return mailService;
+    private List<String> collectEmailUids(PGPPublicKey masterKey) {
+        List<String> emailUids = new ArrayList<>();
+        for (Iterator<String> userIds = masterKey.getUserIDs(); userIds.hasNext(); ) {
+            String uid = userIds.next();
+            if (containsEmail(uid)) {
+                emailUids.add(uid);
+            }
+        }
+        return emailUids;
     }
 
-    public void setMailService(MailService mailService) {
-        this.mailService = mailService;
+    private boolean containsEmail(String uid) {
+        return extractEmail(uid) != null;
+    }
+
+    /// Extracts the email address from a UID string.
+    ///
+    /// Supports both `Name <email@example.com>` and bare `email@example.com` forms.
+    /// Returns `null` if no valid email pattern is found.
+    private String extractEmail(String uid) {
+        if (uid == null || uid.isBlank()) {
+            return null;
+        }
+        int lt = uid.indexOf('<');
+        int gt = uid.indexOf('>');
+        if (lt >= 0 && gt > lt) {
+            String candidate = uid.substring(lt + 1, gt).strip();
+            return isValidEmail(candidate) ? candidate : null;
+        }
+        // bare address
+        return isValidEmail(uid.strip()) ? uid.strip() : null;
+    }
+
+    private boolean isValidEmail(String candidate) {
+        if (candidate == null || candidate.isEmpty()) {
+            return false;
+        }
+        // Reject any whitespace or control characters to prevent log injection.
+        for (int i = 0; i < candidate.length(); i++) {
+            char c = candidate.charAt(i);
+            if (c <= ' ' || c == 127) {
+                return false;
+            }
+        }
+        int at = candidate.indexOf('@');
+        return at > 0 && at == candidate.lastIndexOf('@') && at < candidate.length() - 1;
+    }
+
+    private String fingerprintHex(PGPPublicKey key) {
+        return HexFormat.of().formatHex(key.getFingerprint()).toUpperCase();
+    }
+
+    /// Builds the verification URI from a TSID token.
+    ///
+    /// The URI path is `/verify/{tsid}`.  In a full deployment the base URL
+    /// would come from MicroProfile Config; here we use a relative URI so the
+    /// handler stays infrastructure-free.
+    private URI buildVerificationUri(long tsid) {
+        return URI.create("/verify/" + Long.toUnsignedString(tsid));
+    }
+
+    public void setVerificationQueueRepository(VerificationQueueRepository verificationQueueRepository) {
+        this.verificationQueueRepository = verificationQueueRepository;
+    }
+
+    public void setNotificationPort(VerificationNotificationPort notificationPort) {
+        this.notificationPort = notificationPort;
     }
 }

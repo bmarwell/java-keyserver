@@ -643,3 +643,40 @@ the handler's stack without any explicit parameter threading.
 |`web/*`
 |Resource methods return plain `Response` (synchronous, `202 Accepted`)
 |===
+
+=== 7.7 Client IP and Audit Trail
+
+The client IP address is captured and anonymized in the primary adapter
+(`AddEndpoint`) before the command is constructed.  The anonymized value is
+carried in the command record (`AddKeyToVerificationQueueCommand.anonymizedClientIp`)
+for future wiring into the BTX audit row.
+
+Once `BusinessTransactionRepository.recordStarted()` is extended to accept
+optional metadata, the anonymized IP should be written there so administrators
+can correlate submissions with network-level events without ever persisting
+a raw client IP.
+
+Rules:
+
+* IPv4: last octet zeroed (`192.168.1.42` → `192.168.1.0`)
+* IPv6: last 80 bits zeroed (keep `/48` prefix)
+* `HttpServletRequest.getRemoteAddr()` is used — reverse-proxy `Forwarded` /
+  `X-Forwarded-For` headers are **not** trusted to prevent IP spoofing via forged
+  headers.  Configure the proxy to strip and re-add those headers at the network
+  edge if needed.
+
+== 8. Verification Notification (First Iteration: Log Only)
+
+The first iteration uses `LoggingVerificationNotificationAdapter` to deliver the
+verification URI.  This deliberately logs the full URI (which is a bearer token)
+at `INFO` level so that developers and test operators can retrieve the link
+without an SMTP server.
+
+**Security note**: The full token MUST NOT appear in production logs once SMTP
+is wired.  Either:
+
+* Replace this adapter with `SmtpVerificationNotificationAdapter`, or
+* Downgrade the log level to `FINE`/`DEBUG` behind a guarded condition.
+
+The `TODO` comment in `LoggingVerificationNotificationAdapter` marks the location.
+See also `.github/AGENTS.adoc § Privacy rules`.

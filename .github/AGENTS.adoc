@@ -23,6 +23,70 @@ inventing new ones.
   adapters.
 * Treat repository and mail code as outbound adapters behind ports.
 
+== Ports and adapters (hexagonal architecture)
+
+The module boundaries enforce strict hexagonal layering.  Violating these rules
+creates coupling that makes the system hard to test and replace.
+
+=== Where things live
+
+[cols="1,2,2"]
+|===
+|Layer |What goes here |What must NOT go here
+
+|`application-api`
+|Primary (inbound) port interfaces: `CommandService`, commands, responses,
+ exceptions.
+|Driven/outbound ports; service impls; anything that talks to DB, mail, or HTTP.
+
+|`application-port-repository` +
+`application-port-notification`
+|Secondary (outbound) port interfaces: `VerificationQueueRepository`,
+ `BusinessTransactionRepository`, `VerificationNotificationPort`, etc.
+|Implementations, JPA annotations, SMTP clients.
+
+|`application-core`
+|Hexagon interior: `KeyServerCommandService`, command handlers, CDI producers.
+ May depend on `application-api` and `application-port-*`.
+|Direct use of `EntityManager`, `javax.mail`, `jakarta.ws.rs`.
+
+|`common/*`
+|Pure value objects and utilities (`IpAnonymizer`, `TSID` helpers, key ID types).
+ Zero Jakarta EE or Bouncycastle dependencies.
+|Anything environment-specific.
+
+|`repository`, `mail`
+|Secondary adapters: JPA impls, SMTP sender, logging notification adapter.
+ Implement a port interface with `@Default @ApplicationScoped`.
+|Business logic; anything that belongs in the hexagon interior.
+
+|`web/*`
+|Primary adapters: JAX-RS endpoints.
+ Call `CommandService`; translate HTTP ↔ commands.
+|Business logic; direct JPA/DAO calls; port implementations.
+
+|===
+
+=== Checker rules
+
+* If a new interface is driven *by* the application (it calls out) → put it in
+  `application-port-*`, not in `application-api`.
+* If a new class bridges two adapters → it is in the wrong place; introduce a port.
+* Do not create intermediate "service façades" in `application-core` that merely
+  delegate to a port; inject the port directly into the handler.
+
+== Privacy rules
+
+* **Never store a full IP address.**  All IPs must pass through `IpAnonymizer`
+  in `common/ids` before entering any command, entity, or log record.
+  - IPv4: zero the last octet (`/24` prefix retained).
+  - IPv6: zero the last 80 bits (`/48` prefix retained).
+* The primary adapter (`AddEndpoint`) performs anonymization before building the
+  command object.  Downstream components assume the IP they receive is already
+  anonymized.
+* Third-party PGP certifications are stripped before a key is written to the
+  `keys` table — only self-sigs are stored.
+
 == Code style
 
 * Use sealed interfaces and sealed classes where the type hierarchy is closed and known.

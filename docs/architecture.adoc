@@ -20,50 +20,118 @@ modes are local, syncing, mirror, and group-based lookup.
 
 == 3. Solution strategy
 
-The code follows a layered, ports-and-adapters style:
+The code follows strict hexagonal architecture (ports & adapters).
+The application core knows nothing about HTTP, JPA, or SMTP — it only speaks in
+terms of ports (interfaces).  Adapters translate between the external world and
+those ports.
 
-* `application-api` defines commands, queries, and service contracts.
-* `application-core` routes commands to handlers and orchestrates use cases.
-* `application-ports` defines repository and mail ports.
-* `repository` and `mail` implement the outbound adapters.
-* `web/*` contains protocol-specific inbound adapters.
+=== Primary (inbound) ports — the application's public API
 
-The command side uses a CQRS-like split: endpoints translate HTTP requests into
-commands, handlers perform the work, and repository/mail ports hide persistence
-and notification details.
+Defined in `application-api`.  Adapters outside the hexagon call in through these.
+
+|===
+|Port |Module |Called by
+
+|`CommandService`
+|`application-api`
+|`AddEndpoint`, future REST endpoints
+
+|===
+
+=== Secondary (outbound) ports — what the application needs from the world
+
+Defined in `application-port-*` modules.  The core calls out through these;
+adapters implement them.
+
+|===
+|Port |Module |Implemented by
+
+|`BusinessTransactionRepository`
+|`application-port-repository`
+|`PersistentBusinessTransactionRepository` in `repository`
+
+|`VerificationQueueRepository`
+|`application-port-repository`
+|`JpaVerificationQueueRepository` in `repository`
+
+|`KeyRepository`
+|`application-port-repository`
+|_(stub)_
+
+|`VerificationNotificationPort`
+|`application-port-notification`
+|`LoggingVerificationNotificationAdapter` in `mail` (first iteration);
+ `SmtpVerificationNotificationAdapter` (future)
+
+|===
+
+=== Primary (inbound) adapters — translate external input into port calls
+
+|===
+|Adapter |Module |Port used
+
+|`AddEndpoint`
+|`web/openpgp-keyserver-protocol`
+|`CommandService`
+
+|`LookupEndpoint` _(stub)_
+|`web/openpgp-keyserver-protocol`
+|`KeyRepository`
+
+|===
+
+=== Layer rules
+
+* `application-api` contains *only* primary ports (commands, responses,
+  exceptions, `CommandService`).  It must never contain driven/outbound ports.
+* Driven ports live exclusively in `application-port-*`.
+* Command handlers are domain logic in `application-core` — not ports themselves.
+* Adapters are allowed to depend on ports but never on each other.
+* `common/*` modules contain pure value objects and utilities (no Jakarta EE,
+  no Bouncycastle — they must remain deployable anywhere).
 
 == 4. Building blocks
 
 |===
-|Module |Role |Notes
+|Module |Hex role |Notes
 
 |`common/ids`
 |Value objects
-|Repository names, key IDs, and OpenPGP-related identifiers.
+|Repository names, key IDs, PGP identifiers, `IpAnonymizer`.
 
 |`application-api`
-|Contracts
-|Commands, response marker types, and service interfaces.
+|Primary port definitions
+|Commands, responses, exceptions, `CommandService`.
+
+|`application-port-repository`
+|Secondary port definitions
+|`BusinessTransactionRepository`, `VerificationQueueRepository`, `KeyRepository`.
+
+|`application-port-notification`
+|Secondary port definition
+|`VerificationNotificationPort`.
 
 |`application-core`
-|Use-case orchestration
-|Command dispatch plus repository-facing services.
+|Hexagon interior
+|`KeyServerCommandService` (dispatcher), command handlers, CDI producers.
 
 |`repository`
-|Persistence adapter
-|JPA/Flyway-backed storage for key data and verification queues.
+|Secondary adapter
+|JPA/Flyway-backed storage.  One `@Default` bean per port.
 
 |`mail`
-|Notification adapter
-|SMTP-facing mail implementation.
+|Secondary adapter
+|Notification adapters — `LoggingVerificationNotificationAdapter` first,
+ SMTP later.
 
 |`web/openpgp-keyserver-protocol`
-|PKS endpoint
-|Protocol-oriented add/lookup entry points.
+|Primary adapter
+|PKS add/lookup endpoints.
 
 |`web/rest`
-|REST endpoint
-|Administrative/API-style surface.
+|Primary adapter
+|Administrative REST surface.
+
 |===
 
 == 5. Runtime view
@@ -206,7 +274,48 @@ JAX-RS endpoints call `commandService.handleCommand(command)` synchronously and
 return `Response.accepted()` immediately — the async work happens inside the executor
 without the HTTP thread waiting for it.
 
-== 11. Current state
+== 11. Privacy
+
+=== IP anonymization
+
+No full IP address is ever stored.  Before any persistence or audit write the
+request IP is anonymized:
+
+* **IPv4** — last octet zeroed (`192.168.1.42` → `192.168.1.0`, i.e. `/24`).
+* **IPv6** — last 80 bits zeroed, keeping the `/48` prefix
+  (`2001:db8:cafe::1` → `2001:db8:cafe::`).
+
+The anonymization happens in `IpAnonymizer` (in `common/ids`) and is applied by
+the primary adapter (`AddEndpoint`) *before* building the command.  The command
+object therefore always carries an already-anonymized IP; no component
+downstream needs to think about this.
+
+=== Third-party certification stripping
+
+All third-party certifications (signatures made by keys other than the uploading
+key itself) are stripped before a key is stored in the `keys` table.  This
+prevents the keyserver from becoming a social-graph database.  Only self-sigs
+are retained (key bindings, UID certifications, subkey bindings).
+
+=== Observations on keys.openpgp.org (Hagrid)
+
+We take inspiration from Hagrid.  Its good ideas:
+
+* UIDs are withheld from search results until the email address is verified.
+* Third-party certifications are stripped (privacy, no WoT publishing).
+* GDPR key/UID deletion is supported.
+* Fingerprint-only access without verification is allowed.
+
+Its weak points that we address differently:
+
+* **Hardcoded token TTL** — ours is configurable per deployment.
+* **Email-only verification** — our `VerificationNotificationPort` abstraction
+  allows alternative channels (FIDO, phone) without changing the core.
+* **No audit trail** — we keep a `business_transactions` log for operators.
+* **Metadata leakage** — Hagrid stores keys verbatim after verification;
+  we strip third-party sigs before the `keys` row is written.
+
+== 12. Current state
 
 This repository has a promising structure but is not yet functionally complete.
 Treat this document as an orientation guide, not a stable architecture promise.

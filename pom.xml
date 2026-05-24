@@ -27,6 +27,7 @@
     <module>repository</module>
     <module>mail</module>
     <module>web</module>
+    <module>integration-tests</module>
   </modules>
 
   <properties>
@@ -43,10 +44,19 @@
     <!-- plugin dependencies -->
     <palantir-java-format.version>2.91.0</palantir-java-format.version>
     <flyway.version>12.6.2</flyway.version>
+    <testcontainers.version>1.21.0</testcontainers.version>
   </properties>
 
   <dependencyManagement>
     <dependencies>
+      <dependency>
+        <groupId>org.testcontainers</groupId>
+        <artifactId>testcontainers-bom</artifactId>
+        <version>${testcontainers.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+
       <!-- Jakarta EE 11 -->
       <dependency>
         <groupId>jakarta.enterprise</groupId>
@@ -82,6 +92,13 @@
         <groupId>jakarta.enterprise.concurrent</groupId>
         <artifactId>jakarta.enterprise.concurrent-api</artifactId>
         <version>3.1.1</version>
+        <scope>provided</scope>
+      </dependency>
+
+      <dependency>
+        <groupId>jakarta.servlet</groupId>
+        <artifactId>jakarta.servlet-api</artifactId>
+        <version>6.1.0</version>
         <scope>provided</scope>
       </dependency>
 
