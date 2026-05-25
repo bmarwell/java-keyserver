@@ -120,12 +120,12 @@ public class AddKeyToVerificationQueueCommandHandler
             throw new KeyParsingException("keytext must not be null or blank");
         }
         String keyText = command.keyText();
-        int maxKeyBytes = effectiveMaxKeyBytes();
-        if (keyText.length() > maxKeyBytes) {
+        int limitBytes = effectiveMaxKeyBytes();
+        if (keyText.length() > limitBytes) {
             throw new KeyParsingException("Key submission exceeds maximum allowed size");
         }
         byte[] keyTextBytes = keyText.getBytes(StandardCharsets.UTF_8);
-        if (keyTextBytes.length > maxKeyBytes) {
+        if (keyTextBytes.length > limitBytes) {
             throw new KeyParsingException("Key submission exceeds maximum allowed size");
         }
         PGPPublicKeyRingCollection keyRingCollection = parseKeyText(keyTextBytes);

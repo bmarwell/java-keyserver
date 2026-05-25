@@ -92,13 +92,16 @@ before OpenPGP parsing to reduce oversized-upload DoS risk.
 * Environment variable equivalent: `KEYSERVER_PKS_MAX_KEY_BYTES`
 
 For defense in depth, also enforce request/body limits at your reverse proxy.
+Because `/pks/add` uses `application/x-www-form-urlencoded`, the HTTP request
+body is larger than the decoded `keytext` near the limit. Use a slightly higher
+proxy limit than the application limit to allow for form-encoding overhead.
 Example snippets:
 
 .nginx
 [source,nginx]
 ----
 server {
-    client_max_body_size 128k;
+    client_max_body_size 192k;
 }
 ----
 
@@ -107,7 +110,7 @@ server {
 ----
 example.com {
     request_body {
-        max_size 128KB
+        max_size 192KB
     }
 }
 ----
