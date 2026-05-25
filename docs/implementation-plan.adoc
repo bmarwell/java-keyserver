@@ -682,9 +682,9 @@ is wired.  Either:
 The `TODO` comment in `LoggingVerificationNotificationAdapter` marks the location.
 See also `.github/AGENTS.adoc § Privacy rules`.
 
-== 9. Self-critique and known design debts
+== 10. Self-critique and known design debts
 
-=== 9.1 Things that were done well
+=== 10.1 Things that were done well
 
 * The port/adapter split held cleanly through the VerifyUID work — no leakage
   of JPA types into the core or HTTP types into the repository.
@@ -697,7 +697,7 @@ See also `.github/AGENTS.adoc § Privacy rules`.
   `LoggingVerificationNotificationAdapter` remains an explicit, temporary logging
   exception as documented above.
 
-=== 9.2 Honest design debts introduced during implementation
+=== 10.2 Honest design debts introduced during implementation
 
 ==== TOCTOU in `publishVerifiedUid`
 
