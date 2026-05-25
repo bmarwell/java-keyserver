@@ -37,13 +37,13 @@ import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.Iterator;
 import java.util.List;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.bouncycastle.openpgp.PGPException;
 import org.bouncycastle.openpgp.PGPPublicKey;
 import org.bouncycastle.openpgp.PGPPublicKeyRing;
 import org.bouncycastle.openpgp.PGPPublicKeyRingCollection;
 import org.bouncycastle.openpgp.PGPUtil;
 import org.bouncycastle.openpgp.operator.bc.BcKeyFingerprintCalculator;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 /// Handles the {@link AddKeyToVerificationQueueCommand}.
 ///
