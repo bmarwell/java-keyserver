@@ -106,8 +106,8 @@ public class AddKeyToVerificationQueueCommandHandler
     VerificationNotificationPort notificationPort;
 
     @Inject
-    @ConfigProperty(name = MAX_KEY_BYTES_CONFIG_KEY, defaultValue = "131072")
-    int maxKeyBytes = DEFAULT_MAX_KEY_BYTES;
+    @ConfigProperty(name = MAX_KEY_BYTES_CONFIG_KEY, defaultValue = "" + DEFAULT_MAX_KEY_BYTES)
+    int maxKeyBytes;
 
     @Override
     public <C extends KeyServerCommand> boolean canHandle(C command) {
@@ -119,12 +119,16 @@ public class AddKeyToVerificationQueueCommandHandler
         if (command.keyText() == null || command.keyText().isBlank()) {
             throw new KeyParsingException("keytext must not be null or blank");
         }
-        int keyTextBytes = command.keyText().getBytes(StandardCharsets.UTF_8).length;
-        if (keyTextBytes > effectiveMaxKeyBytes()) {
+        String keyText = command.keyText();
+        int maxKeyBytes = effectiveMaxKeyBytes();
+        if (keyText.length() > maxKeyBytes) {
             throw new KeyParsingException("Key submission exceeds maximum allowed size");
         }
-
-        PGPPublicKeyRingCollection keyRingCollection = parseKeyText(command.keyText());
+        byte[] keyTextBytes = keyText.getBytes(StandardCharsets.UTF_8);
+        if (keyTextBytes.length > maxKeyBytes) {
+            throw new KeyParsingException("Key submission exceeds maximum allowed size");
+        }
+        PGPPublicKeyRingCollection keyRingCollection = parseKeyText(keyTextBytes);
 
         if (!keyRingCollection.iterator().hasNext()) {
             throw new KeyParsingException("Key text contains no valid OpenPGP key rings");
@@ -132,7 +136,7 @@ public class AddKeyToVerificationQueueCommandHandler
 
         for (Iterator<PGPPublicKeyRing> rings = keyRingCollection.getKeyRings(); rings.hasNext(); ) {
             PGPPublicKeyRing keyRing = rings.next();
-            processKeyRing(keyRing, command.keyText());
+            processKeyRing(keyRing, keyText);
         }
 
         return KeyServerCommandResponse.success();
@@ -169,9 +173,8 @@ public class AddKeyToVerificationQueueCommandHandler
         }
     }
 
-    private PGPPublicKeyRingCollection parseKeyText(String keyText) {
+    private PGPPublicKeyRingCollection parseKeyText(byte[] keyBytes) {
         try {
-            byte[] keyBytes = keyText.getBytes(StandardCharsets.UTF_8);
             try (var decoderStream = PGPUtil.getDecoderStream(new ByteArrayInputStream(keyBytes))) {
                 return new PGPPublicKeyRingCollection(decoderStream, new BcKeyFingerprintCalculator());
             }

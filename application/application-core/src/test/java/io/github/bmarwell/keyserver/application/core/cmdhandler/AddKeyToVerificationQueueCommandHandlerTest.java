@@ -172,6 +172,23 @@ class AddKeyToVerificationQueueCommandHandlerTest {
     }
 
     @Test
+    void non_positive_configured_byte_limit_falls_back_to_default_limit() {
+        String oversizedAsciiKey = "a".repeat(AddKeyToVerificationQueueCommandHandler.DEFAULT_MAX_KEY_BYTES + 1);
+
+        for (int configuredLimit : List.of(0, -1)) {
+            handler.setMaxKeyBytes(configuredLimit);
+
+            assertThatThrownBy(() -> handler.doExecute(
+                            new AddKeyToVerificationQueueCommand(oversizedAsciiKey), CommandCallerContext.empty()))
+                    .isInstanceOf(KeyParsingException.class)
+                    .hasMessageContaining("maximum allowed size");
+        }
+
+        assertThat(fakeRepo.received).isEmpty();
+        assertThat(fakeNotification.received).isEmpty();
+    }
+
+    @Test
     void verification_uri_contains_tsid_of_enqueued_entry() throws IOException {
         String keyText = loadTestKey("test-key-with-email.asc");
         var command = new AddKeyToVerificationQueueCommand(keyText);
