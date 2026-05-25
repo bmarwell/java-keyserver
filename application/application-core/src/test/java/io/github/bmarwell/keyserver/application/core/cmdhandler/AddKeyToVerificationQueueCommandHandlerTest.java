@@ -17,6 +17,7 @@ package io.github.bmarwell.keyserver.application.core.cmdhandler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import io.github.bmarwell.keyserver.application.api.commands.AddKeyToVerificationQueueCommand;
 import io.github.bmarwell.keyserver.application.api.commands.CommandCallerContext;
@@ -46,8 +47,8 @@ class AddKeyToVerificationQueueCommandHandlerTest {
 
         @Override
         public long enqueue(VerificationRequest request) {
-            received.add(request);
-            return counter.getAndIncrement();
+            this.received.add(request);
+            return this.counter.getAndIncrement();
         }
 
         @Override
@@ -67,7 +68,7 @@ class AddKeyToVerificationQueueCommandHandlerTest {
 
         @Override
         public void notifyPendingVerification(String toEmail, String fingerprint, URI verificationUri) {
-            received.add(new Notification(toEmail, fingerprint, verificationUri));
+            this.received.add(new Notification(toEmail, fingerprint, verificationUri));
         }
     }
 
@@ -77,11 +78,11 @@ class AddKeyToVerificationQueueCommandHandlerTest {
 
     @BeforeEach
     void setUp() {
-        fakeRepo = new FakeVerificationQueueRepository();
-        fakeNotification = new FakeNotificationPort();
-        handler = new AddKeyToVerificationQueueCommandHandler();
-        handler.setVerificationQueueRepository(fakeRepo);
-        handler.setNotificationPort(fakeNotification);
+        this.fakeRepo = new FakeVerificationQueueRepository();
+        this.fakeNotification = new FakeNotificationPort();
+        this.handler = new AddKeyToVerificationQueueCommandHandler();
+        this.handler.setVerificationQueueRepository(this.fakeRepo);
+        this.handler.setNotificationPort(this.fakeNotification);
     }
 
     private String loadTestKey(String resourceName) throws IOException {
@@ -98,12 +99,12 @@ class AddKeyToVerificationQueueCommandHandlerTest {
         String keyText = loadTestKey("test-key-with-email.asc");
         var command = new AddKeyToVerificationQueueCommand(keyText);
 
-        handler.doExecute(command, CommandCallerContext.empty());
+        this.handler.doExecute(command, CommandCallerContext.empty());
 
         // The test key has one UID: "Test Key <testkey@example.com>"
-        assertThat(fakeRepo.received).hasSize(1);
-        assertThat(fakeRepo.received.getFirst().uidEmail()).isEqualTo("testkey@example.com");
-        assertThat(fakeRepo.received.getFirst().fingerprint()).isNotBlank();
+        assertThat(this.fakeRepo.received).hasSize(1);
+        assertThat(this.fakeRepo.received.getFirst().uidEmail()).isEqualTo("testkey@example.com");
+        assertThat(this.fakeRepo.received.getFirst().fingerprint()).isNotBlank();
     }
 
     @Test
@@ -111,10 +112,10 @@ class AddKeyToVerificationQueueCommandHandlerTest {
         String keyText = loadTestKey("test-key-with-email.asc");
         var command = new AddKeyToVerificationQueueCommand(keyText);
 
-        handler.doExecute(command, CommandCallerContext.empty());
+        this.handler.doExecute(command, CommandCallerContext.empty());
 
-        assertThat(fakeNotification.received).hasSize(1);
-        FakeNotificationPort.Notification note = fakeNotification.received.getFirst();
+        assertThat(this.fakeNotification.received).hasSize(1);
+        FakeNotificationPort.Notification note = this.fakeNotification.received.getFirst();
         assertThat(note.email()).isEqualTo("testkey@example.com");
         assertThat(note.verificationUri().toString()).startsWith("/verify/");
     }
@@ -123,39 +124,89 @@ class AddKeyToVerificationQueueCommandHandlerTest {
     void rejects_null_key_text() {
         var command = new AddKeyToVerificationQueueCommand(null);
 
-        assertThatThrownBy(() -> handler.doExecute(command, CommandCallerContext.empty()))
+        assertThatThrownBy(() -> this.handler.doExecute(command, CommandCallerContext.empty()))
                 .isInstanceOf(KeyParsingException.class);
-        assertThat(fakeRepo.received).isEmpty();
+        assertThat(this.fakeRepo.received).isEmpty();
     }
 
     @Test
     void rejects_blank_key_text() {
         var command = new AddKeyToVerificationQueueCommand("   ");
 
-        assertThatThrownBy(() -> handler.doExecute(command, CommandCallerContext.empty()))
+        assertThatThrownBy(() -> this.handler.doExecute(command, CommandCallerContext.empty()))
                 .isInstanceOf(KeyParsingException.class);
-        assertThat(fakeRepo.received).isEmpty();
+        assertThat(this.fakeRepo.received).isEmpty();
     }
 
     @Test
     void rejects_garbage_key_text() {
         var command = new AddKeyToVerificationQueueCommand("not a pgp key");
 
-        assertThatThrownBy(() -> handler.doExecute(command, CommandCallerContext.empty()))
+        assertThatThrownBy(() -> this.handler.doExecute(command, CommandCallerContext.empty()))
                 .isInstanceOf(KeyParsingException.class);
-        assertThat(fakeRepo.received).isEmpty();
-        assertThat(fakeNotification.received).isEmpty();
+        assertThat(this.fakeRepo.received).isEmpty();
+        assertThat(this.fakeNotification.received).isEmpty();
+    }
+
+    @Test
+    void accepts_key_text_within_configured_byte_limit() throws IOException {
+        // given
+        String keyText = this.loadTestKey("test-key-with-email.asc");
+        int keySizeBytes = keyText.getBytes(StandardCharsets.UTF_8).length;
+        this.handler.setMaxKeyBytes(keySizeBytes);
+        var command = new AddKeyToVerificationQueueCommand(keyText);
+
+        // when
+        this.handler.doExecute(command, CommandCallerContext.empty());
+
+        // then
+        assertThat(this.fakeRepo.received).hasSize(1);
+        assertThat(this.fakeNotification.received).hasSize(1);
+    }
+
+    @Test
+    void rejects_key_text_larger_than_configured_byte_limit() throws IOException {
+        // given
+        String keyText = this.loadTestKey("test-key-with-email.asc");
+        int keySizeBytes = keyText.getBytes(StandardCharsets.UTF_8).length;
+        this.handler.setMaxKeyBytes(keySizeBytes - 1);
+        var command = new AddKeyToVerificationQueueCommand(keyText);
+
+        // when
+        Throwable thrown = catchThrowable(() -> this.handler.doExecute(command, CommandCallerContext.empty()));
+
+        // then
+        assertThat(thrown).isInstanceOf(KeyParsingException.class).hasMessageContaining("maximum allowed size");
+        assertThat(this.fakeRepo.received).isEmpty();
+        assertThat(this.fakeNotification.received).isEmpty();
+    }
+
+    @Test
+    void non_positive_configured_byte_limit_falls_back_to_default_limit() {
+        String oversizedAsciiKey = "a".repeat(AddKeyToVerificationQueueCommandHandler.DEFAULT_MAX_KEY_BYTES + 1);
+
+        for (int configuredLimit : List.of(0, -1)) {
+            this.handler.setMaxKeyBytes(configuredLimit);
+
+            assertThatThrownBy(() -> this.handler.doExecute(
+                            new AddKeyToVerificationQueueCommand(oversizedAsciiKey), CommandCallerContext.empty()))
+                    .isInstanceOf(KeyParsingException.class)
+                    .hasMessageContaining("maximum allowed size");
+        }
+
+        assertThat(this.fakeRepo.received).isEmpty();
+        assertThat(this.fakeNotification.received).isEmpty();
     }
 
     @Test
     void verification_uri_contains_tsid_of_enqueued_entry() throws IOException {
-        String keyText = loadTestKey("test-key-with-email.asc");
+        String keyText = this.loadTestKey("test-key-with-email.asc");
         var command = new AddKeyToVerificationQueueCommand(keyText);
 
-        handler.doExecute(command, CommandCallerContext.empty());
+        this.handler.doExecute(command, CommandCallerContext.empty());
 
         String expectedTsidStr = Long.toUnsignedString(1000L); // first ID assigned by fake repo
-        assertThat(fakeNotification.received.getFirst().verificationUri().toString())
+        assertThat(this.fakeNotification.received.getFirst().verificationUri().toString())
                 .endsWith(expectedTsidStr);
     }
 
@@ -187,10 +238,10 @@ class AddKeyToVerificationQueueCommandHandlerTest {
     void scenario6_too_many_email_uids_rejected() throws IOException {
         int overLimit = AddKeyToVerificationQueueCommandHandler.MAX_EMAIL_UIDS + 1;
         var overflowHandler = new OverflowingHandler(overLimit);
-        overflowHandler.setVerificationQueueRepository(fakeRepo);
-        overflowHandler.setNotificationPort(fakeNotification);
+        overflowHandler.setVerificationQueueRepository(this.fakeRepo);
+        overflowHandler.setNotificationPort(this.fakeNotification);
 
-        String keyText = loadTestKey("test-key-with-email.asc");
+        String keyText = this.loadTestKey("test-key-with-email.asc");
         var command = new AddKeyToVerificationQueueCommand(keyText);
 
         assertThatThrownBy(() -> overflowHandler.doExecute(command, CommandCallerContext.empty()))
@@ -198,7 +249,7 @@ class AddKeyToVerificationQueueCommandHandlerTest {
                 .hasMessageContaining(String.valueOf(overLimit))
                 .hasMessageContaining(String.valueOf(AddKeyToVerificationQueueCommandHandler.MAX_EMAIL_UIDS));
 
-        assertThat(fakeRepo.received).isEmpty();
-        assertThat(fakeNotification.received).isEmpty();
+        assertThat(this.fakeRepo.received).isEmpty();
+        assertThat(this.fakeNotification.received).isEmpty();
     }
 }

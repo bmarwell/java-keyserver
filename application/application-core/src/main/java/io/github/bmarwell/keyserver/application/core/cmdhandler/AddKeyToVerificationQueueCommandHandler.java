@@ -43,6 +43,7 @@ import org.bouncycastle.openpgp.PGPPublicKeyRing;
 import org.bouncycastle.openpgp.PGPPublicKeyRingCollection;
 import org.bouncycastle.openpgp.PGPUtil;
 import org.bouncycastle.openpgp.operator.bc.BcKeyFingerprintCalculator;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 /// Handles the {@link AddKeyToVerificationQueueCommand}.
 ///
@@ -77,6 +78,8 @@ public class AddKeyToVerificationQueueCommandHandler
         extends AbstractKeyServerCommandHandler<AddKeyToVerificationQueueCommand> {
 
     static final int TOKEN_TTL_HOURS = 24;
+    static final int DEFAULT_MAX_KEY_BYTES = 128 * 1024;
+    static final String MAX_KEY_BYTES_CONFIG_KEY = "keyserver.pks.max-key-bytes";
 
     /// Maximum number of email-bearing UIDs accepted from a single key submission.
     ///
@@ -102,6 +105,10 @@ public class AddKeyToVerificationQueueCommandHandler
     @Inject
     VerificationNotificationPort notificationPort;
 
+    @Inject
+    @ConfigProperty(name = MAX_KEY_BYTES_CONFIG_KEY, defaultValue = "" + DEFAULT_MAX_KEY_BYTES)
+    int maxKeyBytes;
+
     @Override
     public <C extends KeyServerCommand> boolean canHandle(C command) {
         return command instanceof AddKeyToVerificationQueueCommand;
@@ -112,8 +119,16 @@ public class AddKeyToVerificationQueueCommandHandler
         if (command.keyText() == null || command.keyText().isBlank()) {
             throw new KeyParsingException("keytext must not be null or blank");
         }
-
-        PGPPublicKeyRingCollection keyRingCollection = parseKeyText(command.keyText());
+        String keyText = command.keyText();
+        int limitBytes = this.effectiveMaxKeyBytes();
+        if (keyText.length() > limitBytes) {
+            throw new KeyParsingException("Key submission exceeds maximum allowed size");
+        }
+        byte[] keyTextBytes = keyText.getBytes(StandardCharsets.UTF_8);
+        if (keyTextBytes.length > limitBytes) {
+            throw new KeyParsingException("Key submission exceeds maximum allowed size");
+        }
+        PGPPublicKeyRingCollection keyRingCollection = this.parseKeyText(keyTextBytes);
 
         if (!keyRingCollection.iterator().hasNext()) {
             throw new KeyParsingException("Key text contains no valid OpenPGP key rings");
@@ -121,7 +136,7 @@ public class AddKeyToVerificationQueueCommandHandler
 
         for (Iterator<PGPPublicKeyRing> rings = keyRingCollection.getKeyRings(); rings.hasNext(); ) {
             PGPPublicKeyRing keyRing = rings.next();
-            processKeyRing(keyRing, command.keyText());
+            this.processKeyRing(keyRing, keyText);
         }
 
         return KeyServerCommandResponse.success();
@@ -135,7 +150,7 @@ public class AddKeyToVerificationQueueCommandHandler
                     "Master key %s is revoked".formatted(fingerprintHex(masterKey)), () -> fingerprintHex(masterKey));
         }
 
-        List<String> emailUids = collectEmailUids(masterKey);
+        List<String> emailUids = this.collectEmailUids(masterKey);
         if (emailUids.isEmpty()) {
             throw new NoVerifiableUidException(
                     "Key %s has no UIDs with a verifiable email address".formatted(fingerprintHex(masterKey)));
@@ -150,17 +165,16 @@ public class AddKeyToVerificationQueueCommandHandler
         OffsetDateTime expiresAt = OffsetDateTime.now().plusHours(TOKEN_TTL_HOURS);
 
         for (String uid : emailUids) {
-            String email = extractEmail(uid);
+            String email = this.extractEmail(uid);
             var request = new VerificationRequest(fingerprint, uid, email, armoredKey, expiresAt);
-            long tsid = verificationQueueRepository.enqueue(request);
-            URI verificationUri = buildVerificationUri(tsid);
-            notificationPort.notifyPendingVerification(email, fingerprint, verificationUri);
+            long tsid = this.verificationQueueRepository.enqueue(request);
+            URI verificationUri = this.buildVerificationUri(tsid);
+            this.notificationPort.notifyPendingVerification(email, fingerprint, verificationUri);
         }
     }
 
-    private PGPPublicKeyRingCollection parseKeyText(String keyText) {
+    private PGPPublicKeyRingCollection parseKeyText(byte[] keyBytes) {
         try {
-            byte[] keyBytes = keyText.getBytes(StandardCharsets.UTF_8);
             try (var decoderStream = PGPUtil.getDecoderStream(new ByteArrayInputStream(keyBytes))) {
                 return new PGPPublicKeyRingCollection(decoderStream, new BcKeyFingerprintCalculator());
             }
@@ -173,7 +187,7 @@ public class AddKeyToVerificationQueueCommandHandler
         List<String> emailUids = new ArrayList<>();
         for (Iterator<String> userIds = masterKey.getUserIDs(); userIds.hasNext(); ) {
             String uid = userIds.next();
-            if (containsEmail(uid)) {
+            if (this.containsEmail(uid)) {
                 emailUids.add(uid);
             }
         }
@@ -181,7 +195,7 @@ public class AddKeyToVerificationQueueCommandHandler
     }
 
     private boolean containsEmail(String uid) {
-        return extractEmail(uid) != null;
+        return this.extractEmail(uid) != null;
     }
 
     /// Extracts the email address from a UID string.
@@ -196,10 +210,10 @@ public class AddKeyToVerificationQueueCommandHandler
         int gt = uid.indexOf('>');
         if (lt >= 0 && gt > lt) {
             String candidate = uid.substring(lt + 1, gt).strip();
-            return isValidEmail(candidate) ? candidate : null;
+            return this.isValidEmail(candidate) ? candidate : null;
         }
         // bare address
-        return isValidEmail(uid.strip()) ? uid.strip() : null;
+        return this.isValidEmail(uid.strip()) ? uid.strip() : null;
     }
 
     private boolean isValidEmail(String candidate) {
@@ -236,5 +250,13 @@ public class AddKeyToVerificationQueueCommandHandler
 
     public void setNotificationPort(VerificationNotificationPort notificationPort) {
         this.notificationPort = notificationPort;
+    }
+
+    void setMaxKeyBytes(int maxKeyBytes) {
+        this.maxKeyBytes = maxKeyBytes;
+    }
+
+    private int effectiveMaxKeyBytes() {
+        return this.maxKeyBytes > 0 ? this.maxKeyBytes : DEFAULT_MAX_KEY_BYTES;
     }
 }

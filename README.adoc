@@ -81,3 +81,36 @@ podman run --name keyserver-db --rm -e POSTGRES_PASSWORD=test1234   -p 5432:5432
 ----
 KEYSERVER_DB_PASSWORD=test1234 mvn package -pl web/openpgp-keyserver-protocol -am liberty:dev
 ----
+
+== Upload size limits (`POST /pks/add`)
+
+The server enforces a maximum `keytext` payload size in the application layer
+before OpenPGP parsing to reduce oversized-upload DoS risk.
+
+* Default limit: `131072` bytes (`128 KiB`, UTF-8 byte length)
+* MicroProfile Config property: `keyserver.pks.max-key-bytes`
+* Environment variable equivalent: `KEYSERVER_PKS_MAX_KEY_BYTES`
+
+For defense in depth, also enforce request/body limits at your reverse proxy.
+Because `/pks/add` uses `application/x-www-form-urlencoded`, the HTTP request
+body is larger than the decoded `keytext` near the limit. Use a slightly higher
+proxy limit than the application limit to allow for form-encoding overhead.
+Example snippets:
+
+.nginx
+[source,nginx]
+----
+server {
+    client_max_body_size 192k;
+}
+----
+
+.Caddy
+[source,caddyfile]
+----
+example.com {
+    request_body {
+        max_size 192KB
+    }
+}
+----
