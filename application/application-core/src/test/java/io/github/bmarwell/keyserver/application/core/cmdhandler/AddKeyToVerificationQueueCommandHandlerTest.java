@@ -17,6 +17,7 @@ package io.github.bmarwell.keyserver.application.core.cmdhandler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import io.github.bmarwell.keyserver.application.api.commands.AddKeyToVerificationQueueCommand;
 import io.github.bmarwell.keyserver.application.api.commands.CommandCallerContext;
@@ -148,25 +149,34 @@ class AddKeyToVerificationQueueCommandHandlerTest {
     }
 
     @Test
-    void rejects_key_text_larger_than_configured_byte_limit() {
-        handler.setMaxKeyBytes(4);
-        var command = new AddKeyToVerificationQueueCommand("€€");
+    void accepts_key_text_within_configured_byte_limit() throws IOException {
+        // given
+        String keyText = loadTestKey("test-key-with-email.asc");
+        int keySizeBytes = keyText.getBytes(StandardCharsets.UTF_8).length;
+        handler.setMaxKeyBytes(keySizeBytes);
+        var command = new AddKeyToVerificationQueueCommand(keyText);
 
-        assertThatThrownBy(() -> handler.doExecute(command, CommandCallerContext.empty()))
-                .isInstanceOf(KeyParsingException.class)
-                .hasMessageContaining("maximum allowed size");
-        assertThat(fakeRepo.received).isEmpty();
-        assertThat(fakeNotification.received).isEmpty();
+        // when
+        handler.doExecute(command, CommandCallerContext.empty());
+
+        // then
+        assertThat(fakeRepo.received).hasSize(1);
+        assertThat(fakeNotification.received).hasSize(1);
     }
 
     @Test
-    void key_text_equal_to_configured_byte_limit_is_not_rejected_by_size_guard() {
-        handler.setMaxKeyBytes(4);
-        var command = new AddKeyToVerificationQueueCommand("1234");
+    void rejects_key_text_larger_than_configured_byte_limit() throws IOException {
+        // given
+        String keyText = loadTestKey("test-key-with-email.asc");
+        int keySizeBytes = keyText.getBytes(StandardCharsets.UTF_8).length;
+        handler.setMaxKeyBytes(keySizeBytes - 1);
+        var command = new AddKeyToVerificationQueueCommand(keyText);
 
-        assertThatThrownBy(() -> handler.doExecute(command, CommandCallerContext.empty()))
-                .isInstanceOf(KeyParsingException.class)
-                .hasMessageContaining("Failed to parse PGP key");
+        // when
+        Throwable thrown = catchThrowable(() -> handler.doExecute(command, CommandCallerContext.empty()));
+
+        // then
+        assertThat(thrown).isInstanceOf(KeyParsingException.class).hasMessageContaining("maximum allowed size");
         assertThat(fakeRepo.received).isEmpty();
         assertThat(fakeNotification.received).isEmpty();
     }
