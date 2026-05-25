@@ -11,6 +11,9 @@ import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommandRes
 import io.github.bmarwell.keyserver.application.api.commands.VerifyUidCommand;
 import io.github.bmarwell.keyserver.application.api.ex.TokenExpiredException;
 import io.github.bmarwell.keyserver.application.api.ex.TokenInvalidException;
+import io.github.bmarwell.keyserver.application.core.cmdhandler.verification.CommandVerificationRegistry;
+import io.github.bmarwell.keyserver.application.core.cmdhandler.verification.NoCommandVerification;
+import io.github.bmarwell.keyserver.application.core.cmdhandler.verification.NoOpCommandVerificationRegistry;
 import io.github.bmarwell.keyserver.application.port.repository.KeyRepository;
 import io.github.bmarwell.keyserver.application.port.repository.VerificationQueueRepository;
 import io.github.bmarwell.keyserver.application.port.repository.VerificationQueueRepository.VerificationEntry;
@@ -39,7 +42,10 @@ import java.time.OffsetDateTime;
 /// The `CommandCallerContext` is threaded through for audit consistency but this
 /// handler does not require the IP directly.
 @RequestScoped
-public class VerifyUidCommandHandler extends AbstractKeyServerCommandHandler<VerifyUidCommand> {
+public class VerifyUidCommandHandler extends AbstractKeyServerCommandHandler<VerifyUidCommand, NoCommandVerification> {
+
+    private final CommandVerificationRegistry<VerifyUidCommand, NoCommandVerification> noOpVerificationRegistry =
+            new NoOpCommandVerificationRegistry<>();
 
     @Inject
     VerificationQueueRepository verificationQueueRepository;
@@ -53,7 +59,13 @@ public class VerifyUidCommandHandler extends AbstractKeyServerCommandHandler<Ver
     }
 
     @Override
-    KeyServerCommandResponse doExecute(VerifyUidCommand command, CommandCallerContext callerContext) {
+    protected CommandVerificationRegistry<VerifyUidCommand, NoCommandVerification> verificationRegistry() {
+        return this.noOpVerificationRegistry;
+    }
+
+    @Override
+    KeyServerCommandResponse doExecute(
+            VerifyUidCommand command, NoCommandVerification verification, CommandCallerContext callerContext) {
         long tokenId = parseToken(command.token());
 
         VerificationEntry entry = verificationQueueRepository

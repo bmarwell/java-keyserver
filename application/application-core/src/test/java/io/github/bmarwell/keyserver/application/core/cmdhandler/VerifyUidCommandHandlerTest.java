@@ -153,7 +153,7 @@ class VerifyUidCommandHandlerTest {
     void scenario2_expired_token_throws_TokenExpiredException() {
         fakeQueue.put(TOKEN_1, expiredEntry(TOKEN_1, "Alice <alice@example.com>", "alice@example.com"));
 
-        assertThatThrownBy(() -> handler.doExecute(
+        assertThatThrownBy(() -> handler.execute(
                         new VerifyUidCommand(Long.toUnsignedString(TOKEN_1)), CommandCallerContext.empty()))
                 .isInstanceOf(TokenExpiredException.class);
 
@@ -169,7 +169,7 @@ class VerifyUidCommandHandlerTest {
     void scenario3_single_email_clicked_publishes_key() {
         fakeQueue.put(TOKEN_1, pendingEntry(TOKEN_1, "Alice <alice@example.com>", "alice@example.com"));
 
-        handler.doExecute(new VerifyUidCommand(Long.toUnsignedString(TOKEN_1)), CommandCallerContext.empty());
+        handler.execute(new VerifyUidCommand(Long.toUnsignedString(TOKEN_1)), CommandCallerContext.empty());
 
         assertThat(fakeKeys.published).hasSize(1);
         assertThat(fakeKeys.published.getFirst().uidEmail()).isEqualTo("alice@example.com");
@@ -182,10 +182,10 @@ class VerifyUidCommandHandlerTest {
         fakeQueue.put(TOKEN_1, pendingEntry(TOKEN_1, "Alice <alice@example.com>", "alice@example.com"));
 
         // First click succeeds
-        handler.doExecute(new VerifyUidCommand(Long.toUnsignedString(TOKEN_1)), CommandCallerContext.empty());
+        handler.execute(new VerifyUidCommand(Long.toUnsignedString(TOKEN_1)), CommandCallerContext.empty());
 
         // Second click on the same token → invalid (consumed)
-        assertThatThrownBy(() -> handler.doExecute(
+        assertThatThrownBy(() -> handler.execute(
                         new VerifyUidCommand(Long.toUnsignedString(TOKEN_1)), CommandCallerContext.empty()))
                 .isInstanceOf(TokenInvalidException.class);
 
@@ -204,10 +204,10 @@ class VerifyUidCommandHandlerTest {
         fakeQueue.put(TOKEN_2, expiredEntry(TOKEN_2, "Alice Work <work@corp.example>", "work@corp.example"));
 
         // First verification succeeds
-        handler.doExecute(new VerifyUidCommand(Long.toUnsignedString(TOKEN_1)), CommandCallerContext.empty());
+        handler.execute(new VerifyUidCommand(Long.toUnsignedString(TOKEN_1)), CommandCallerContext.empty());
 
         // Second token has expired
-        assertThatThrownBy(() -> handler.doExecute(
+        assertThatThrownBy(() -> handler.execute(
                         new VerifyUidCommand(Long.toUnsignedString(TOKEN_2)), CommandCallerContext.empty()))
                 .isInstanceOf(TokenExpiredException.class);
 
@@ -226,8 +226,8 @@ class VerifyUidCommandHandlerTest {
         fakeQueue.put(TOKEN_1, pendingEntry(TOKEN_1, "Alice <alice@example.com>", "alice@example.com"));
         fakeQueue.put(TOKEN_2, pendingEntry(TOKEN_2, "Alice Work <work@corp.example>", "work@corp.example"));
 
-        handler.doExecute(new VerifyUidCommand(Long.toUnsignedString(TOKEN_1)), CommandCallerContext.empty());
-        handler.doExecute(new VerifyUidCommand(Long.toUnsignedString(TOKEN_2)), CommandCallerContext.empty());
+        handler.execute(new VerifyUidCommand(Long.toUnsignedString(TOKEN_1)), CommandCallerContext.empty());
+        handler.execute(new VerifyUidCommand(Long.toUnsignedString(TOKEN_2)), CommandCallerContext.empty());
 
         assertThat(fakeKeys.published).hasSize(2);
         assertThat(fakeKeys.published)
@@ -242,7 +242,7 @@ class VerifyUidCommandHandlerTest {
 
     @Test
     void garbled_token_string_throws_TokenInvalidException() {
-        assertThatThrownBy(() -> handler.doExecute(new VerifyUidCommand("not-a-number"), CommandCallerContext.empty()))
+        assertThatThrownBy(() -> handler.execute(new VerifyUidCommand("not-a-number"), CommandCallerContext.empty()))
                 .isInstanceOf(TokenInvalidException.class);
         assertThat(fakeKeys.published).isEmpty();
     }
@@ -250,7 +250,7 @@ class VerifyUidCommandHandlerTest {
     @Test
     void unknown_token_throws_TokenInvalidException() {
         // Nothing in the fake queue
-        assertThatThrownBy(() -> handler.doExecute(
+        assertThatThrownBy(() -> handler.execute(
                         new VerifyUidCommand(Long.toUnsignedString(9_999L)), CommandCallerContext.empty()))
                 .isInstanceOf(TokenInvalidException.class);
         assertThat(fakeKeys.published).isEmpty();
@@ -287,7 +287,7 @@ class VerifyUidCommandHandlerTest {
         Thread t1 = new Thread(() -> {
             try {
                 start.await();
-                handler.doExecute(new VerifyUidCommand(Long.toUnsignedString(TOKEN_1)), CommandCallerContext.empty());
+                handler.execute(new VerifyUidCommand(Long.toUnsignedString(TOKEN_1)), CommandCallerContext.empty());
             } catch (Throwable t) {
                 errors.add(t);
             } finally {
@@ -297,7 +297,7 @@ class VerifyUidCommandHandlerTest {
         Thread t2 = new Thread(() -> {
             try {
                 start.await();
-                handler.doExecute(new VerifyUidCommand(Long.toUnsignedString(TOKEN_2)), CommandCallerContext.empty());
+                handler.execute(new VerifyUidCommand(Long.toUnsignedString(TOKEN_2)), CommandCallerContext.empty());
             } catch (Throwable t) {
                 errors.add(t);
             } finally {

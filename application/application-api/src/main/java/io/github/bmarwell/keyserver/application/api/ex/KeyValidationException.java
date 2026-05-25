@@ -15,6 +15,7 @@ public abstract sealed class KeyValidationException extends KeyServerException
                 KeyRevokedException,
                 NoVerifiableUidException,
                 InvalidAlgorithmException,
+                TooManySubkeysException,
                 TooManyVerifiableUidsException {
 
     protected KeyValidationException(String message, Optional<KeyFingerprint> fingerprint) {

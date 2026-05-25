@@ -476,6 +476,11 @@ try {
 * ✅ BTX lifecycle wiring complete.
 * ✅ `AddKeyToVerificationQueueCommandHandler` implemented.
 * ✅ Configurable add-path keytext size limit implemented via MicroProfile Config.
+* ✅ Command execution now has a template-method verification hook in
+  `AbstractKeyServerCommandHandler`: handlers execute verification first, then
+  business logic.
+* ✅ The add path now uses a verification registry/chain built from small
+  verification steps (`KeyTextSizeValidator`, `KeyTextParser`, `KeyRingVerifier`).
 * Remaining handler hardening: subkey-count cap (#136) plus configurable token
   TTL / remaining limits (#141).
 * Add `KeyServerQueryService` for read-only lookups (`@Transactional(READ_ONLY)`).
@@ -514,6 +519,24 @@ try {
   `application/problem+json` (#133).
 * Implement `KeyEndpoint` and `RepositoryEndpoint` stubs once the core flows
   work.
+
+=== 6.8 Future enhancement: command verification rollout
+
+The add command now uses **both** of the patterns discussed during #136:
+
+* a **template-method hook** in `AbstractKeyServerCommandHandler`, and
+* a **verification registry** composed of small verification steps.
+
+This should be the default direction for future command validation:
+
+* handlers should not inline large validation blocks in `doExecute(...)`
+* command-specific validation should live behind a typed
+  `CommandVerificationRegistry<T, V>`
+* reusable checks should be implemented as small `VerificationStep<I, O>` classes
+
+Future work can move more handlers (for example token verification or future REST
+write commands) onto the same structure as soon as they have enough pre-execution
+checks to justify it.
 
 == 7. Open Questions / Design Decisions
 
