@@ -16,15 +16,11 @@
 package io.github.bmarwell.keyserver.web.pks;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.github.bmarwell.keyserver.application.api.ex.DuplicateKeyException;
 import io.github.bmarwell.keyserver.application.api.ex.KeyParsingException;
 import io.github.bmarwell.keyserver.common.ids.KeyFingerprint;
-import jakarta.json.Json;
-import jakarta.json.stream.JsonParsingException;
 import jakarta.ws.rs.core.Response;
-import java.io.StringReader;
 import org.junit.jupiter.api.Test;
 
 class KeyServerExceptionMapperTest {
@@ -42,8 +38,7 @@ class KeyServerExceptionMapperTest {
         assertThat(response.getHeaderString("X-Correlation-ID")).isEqualTo(ex.getCorrelationId());
         assertThat(response.getHeaderString("Content-Type")).startsWith("text/plain");
         assertThat(body).isEqualTo("KeyParsingException: [correlationId: " + ex.getCorrelationId() + "]");
-        assertThatThrownBy(() -> Json.createReader(new StringReader(body)).readValue())
-                .isInstanceOf(JsonParsingException.class);
+        assertThat(body).doesNotStartWith("{");
     }
 
     @Test
