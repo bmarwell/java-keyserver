@@ -148,6 +148,30 @@ class AddKeyToVerificationQueueCommandHandlerTest {
     }
 
     @Test
+    void rejects_key_text_larger_than_configured_byte_limit() {
+        handler.setMaxKeyBytes(4);
+        var command = new AddKeyToVerificationQueueCommand("€€");
+
+        assertThatThrownBy(() -> handler.doExecute(command, CommandCallerContext.empty()))
+                .isInstanceOf(KeyParsingException.class)
+                .hasMessageContaining("maximum allowed size");
+        assertThat(fakeRepo.received).isEmpty();
+        assertThat(fakeNotification.received).isEmpty();
+    }
+
+    @Test
+    void key_text_equal_to_configured_byte_limit_is_not_rejected_by_size_guard() {
+        handler.setMaxKeyBytes(4);
+        var command = new AddKeyToVerificationQueueCommand("1234");
+
+        assertThatThrownBy(() -> handler.doExecute(command, CommandCallerContext.empty()))
+                .isInstanceOf(KeyParsingException.class)
+                .hasMessageContaining("Failed to parse PGP key");
+        assertThat(fakeRepo.received).isEmpty();
+        assertThat(fakeNotification.received).isEmpty();
+    }
+
+    @Test
     void verification_uri_contains_tsid_of_enqueued_entry() throws IOException {
         String keyText = loadTestKey("test-key-with-email.asc");
         var command = new AddKeyToVerificationQueueCommand(keyText);

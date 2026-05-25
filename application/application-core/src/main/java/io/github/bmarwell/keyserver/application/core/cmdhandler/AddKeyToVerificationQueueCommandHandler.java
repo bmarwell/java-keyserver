@@ -37,6 +37,7 @@ import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.Iterator;
 import java.util.List;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.bouncycastle.openpgp.PGPException;
 import org.bouncycastle.openpgp.PGPPublicKey;
 import org.bouncycastle.openpgp.PGPPublicKeyRing;
@@ -77,6 +78,8 @@ public class AddKeyToVerificationQueueCommandHandler
         extends AbstractKeyServerCommandHandler<AddKeyToVerificationQueueCommand> {
 
     static final int TOKEN_TTL_HOURS = 24;
+    static final int DEFAULT_MAX_KEY_BYTES = 128 * 1024;
+    static final String MAX_KEY_BYTES_CONFIG_KEY = "keyserver.pks.max-key-bytes";
 
     /// Maximum number of email-bearing UIDs accepted from a single key submission.
     ///
@@ -102,6 +105,10 @@ public class AddKeyToVerificationQueueCommandHandler
     @Inject
     VerificationNotificationPort notificationPort;
 
+    @Inject
+    @ConfigProperty(name = MAX_KEY_BYTES_CONFIG_KEY, defaultValue = "131072")
+    int maxKeyBytes = DEFAULT_MAX_KEY_BYTES;
+
     @Override
     public <C extends KeyServerCommand> boolean canHandle(C command) {
         return command instanceof AddKeyToVerificationQueueCommand;
@@ -111,6 +118,10 @@ public class AddKeyToVerificationQueueCommandHandler
     KeyServerCommandResponse doExecute(AddKeyToVerificationQueueCommand command, CommandCallerContext callerContext) {
         if (command.keyText() == null || command.keyText().isBlank()) {
             throw new KeyParsingException("keytext must not be null or blank");
+        }
+        int keyTextBytes = command.keyText().getBytes(StandardCharsets.UTF_8).length;
+        if (keyTextBytes > effectiveMaxKeyBytes()) {
+            throw new KeyParsingException("Key submission exceeds maximum allowed size");
         }
 
         PGPPublicKeyRingCollection keyRingCollection = parseKeyText(command.keyText());
@@ -236,5 +247,13 @@ public class AddKeyToVerificationQueueCommandHandler
 
     public void setNotificationPort(VerificationNotificationPort notificationPort) {
         this.notificationPort = notificationPort;
+    }
+
+    void setMaxKeyBytes(int maxKeyBytes) {
+        this.maxKeyBytes = maxKeyBytes;
+    }
+
+    private int effectiveMaxKeyBytes() {
+        return maxKeyBytes > 0 ? maxKeyBytes : DEFAULT_MAX_KEY_BYTES;
     }
 }

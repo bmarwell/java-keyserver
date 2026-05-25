@@ -30,6 +30,11 @@
       <artifactId>jakarta.transaction-api</artifactId>
     </dependency>
     <dependency>
+      <groupId>org.eclipse.microprofile.config</groupId>
+      <artifactId>microprofile-config-api</artifactId>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
       <groupId>io.hypersistence</groupId>
       <artifactId>hypersistence-tsid</artifactId>
     </dependency>
