@@ -481,8 +481,7 @@ try {
   business logic.
 * ✅ The add path now uses a verification registry/chain built from small
   verification steps (`KeyTextSizeValidator`, `KeyTextParser`, `KeyRingVerifier`).
-* Remaining handler hardening: subkey-count cap (#136) plus configurable token
-  TTL / remaining limits (#141).
+* Remaining handler hardening: configurable token TTL / remaining limits (#141).
 * Add `KeyServerQueryService` for read-only lookups (`@Transactional(READ_ONLY)`).
 
 === 6.4 `application/application-ports`

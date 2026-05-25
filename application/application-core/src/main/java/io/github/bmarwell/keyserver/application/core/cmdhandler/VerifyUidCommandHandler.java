@@ -66,9 +66,9 @@ public class VerifyUidCommandHandler extends AbstractKeyServerCommandHandler<Ver
     @Override
     KeyServerCommandResponse doExecute(
             VerifyUidCommand command, NoCommandVerification verification, CommandCallerContext callerContext) {
-        long tokenId = parseToken(command.token());
+        long tokenId = this.parseToken(command.token());
 
-        VerificationEntry entry = verificationQueueRepository
+        VerificationEntry entry = this.verificationQueueRepository
                 .findPendingById(tokenId)
                 .orElseThrow(() -> new TokenInvalidException(
                         // Do not echo the token value into the exception message.
@@ -81,8 +81,9 @@ public class VerifyUidCommandHandler extends AbstractKeyServerCommandHandler<Ver
             throw new TokenExpiredException("Verification token has expired for fingerprint " + entry.fingerprint());
         }
 
-        verificationQueueRepository.markVerified(tokenId);
-        keyRepository.publishVerifiedUid(entry.fingerprint(), entry.uidRaw(), entry.uidEmail(), entry.armoredKey());
+        this.verificationQueueRepository.markVerified(tokenId);
+        this.keyRepository.publishVerifiedUid(
+                entry.fingerprint(), entry.uidRaw(), entry.uidEmail(), entry.armoredKey());
 
         return KeyServerCommandResponse.success();
     }
