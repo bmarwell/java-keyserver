@@ -728,6 +728,10 @@ Operators cannot filter the audit log by key fingerprint.
 ==== Error response content type
 
 `LookupEndpoint` returns `text/plain` for 400/404/501 errors.
-This is consistent with the HKP tradition but inconsistent with what `application/problem+json`
-(RFC 7807) would offer.  The `ExceptionMapper` classes are already in place;
-switching the content type is deferred (saved for a dedicated commit).
+This is the correct behavior for HKP compatibility: HKP clients expect plain-text
+error bodies, so HKP endpoints should continue to produce `text/plain` rather than
+`application/problem+json`.  The deferred work is to make error handling consistent
+across the HKP surface (including the existing `ExceptionMapper` classes) so they
+also emit `text/plain` for HKP failures.  If RFC 7807 responses are introduced in
+the future, they should be limited to separate non-HKP/REST endpoints or explicit
+content negotiation, not replace HKP error responses.
