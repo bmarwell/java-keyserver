@@ -16,11 +16,15 @@
 package io.github.bmarwell.keyserver.web.pks;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.github.bmarwell.keyserver.application.api.ex.DuplicateKeyException;
 import io.github.bmarwell.keyserver.application.api.ex.KeyParsingException;
 import io.github.bmarwell.keyserver.common.ids.KeyFingerprint;
+import jakarta.json.Json;
+import jakarta.json.stream.JsonParsingException;
 import jakarta.ws.rs.core.Response;
+import java.io.StringReader;
 import org.junit.jupiter.api.Test;
 
 class KeyServerExceptionMapperTest {
@@ -32,12 +36,14 @@ class KeyServerExceptionMapperTest {
         KeyParsingException ex = new KeyParsingException("bad key format");
 
         Response response = mapper.toResponse(ex);
+        String body = (String) response.getEntity();
 
         assertThat(response.getStatus()).isEqualTo(400);
         assertThat(response.getHeaderString("X-Correlation-ID")).isEqualTo(ex.getCorrelationId());
         assertThat(response.getHeaderString("Content-Type")).startsWith("text/plain");
-        assertThat(response.getEntity())
-                .isEqualTo("KeyParsingException: [correlationId: " + ex.getCorrelationId() + "]");
+        assertThat(body).isEqualTo("KeyParsingException: [correlationId: " + ex.getCorrelationId() + "]");
+        assertThatThrownBy(() -> Json.createReader(new StringReader(body)).readValue())
+                .isInstanceOf(JsonParsingException.class);
     }
 
     @Test
