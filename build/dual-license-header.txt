@@ -1,0 +1,5 @@
+/*
+ * Copyright (C) 2023-$today.year The java-keyserver project team.
+ *
+ * SPDX-License-Identifier: EUPL-1.2 OR Apache-2.0
+ */
