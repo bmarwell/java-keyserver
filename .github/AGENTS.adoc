@@ -156,6 +156,10 @@ Every mutating command is wrapped in a BTX lifecycle:
 * Do not add temporary hacks or broad fallbacks.
 * Keep names, formatting, and package structure consistent with nearby code.
 * Use `this.` when referencing instance fields in Java code.
+* Prefer non-nullability where possible; prefer null-object patterns where they fit the design.
+* Use `@Nullable` sparingly and only at boundaries that genuinely allow absence.
+* Prefer `Optional` instead of `@Nullable` for return types.
+* Never use `Optional` in fields, and avoid `Optional` parameters unless there is no cleaner API shape.
 * Avoid mixing docs, refactors, and behavior changes unless the task needs it.
 * After each Java or `pom.xml` change, run `./mvnw spotless:apply`.
 
