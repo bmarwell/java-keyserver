@@ -14,8 +14,15 @@
 
   <licenses>
     <license>
+      <name>European Union Public Licence 1.2</name>
+      <url>https://joinup.ec.europa.eu/sites/default/files/custom-page/attachment/2020-03/EUPL-1.2%20EN.txt</url>
+      <distribution>repo</distribution>
+      <comments>EUPL-1.2</comments>
+    </license>
+    <license>
       <name>Apache License, Version 2.0</name>
       <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
       <comments>Apache-2.0</comments>
     </license>
   </licenses>
@@ -388,7 +395,7 @@
             <removeUnusedImports />
 
             <licenseHeader>
-              <file>${maven.multiModuleProjectDirectory}/build/apache-2.0-license-header.txt</file>
+              <file>${maven.multiModuleProjectDirectory}/build/dual-license-header.txt</file>
             </licenseHeader>
 
             <palantirJavaFormat>
