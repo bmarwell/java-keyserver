@@ -7,6 +7,30 @@ compliant with the HKP protocol (the protocol GnuPG uses by default).
 It covers protocol requirements, database schema, exception handling, transaction
 discipline, and the specific changes needed in each module.
 
+== Status snapshot (2026-05)
+
+The original plan has partly been implemented and now needs to be read as a
+living document rather than a greenfield checklist.
+
+Already in place on `main`:
+
+* `POST /pks/add` uses `application/x-www-form-urlencoded` with a `keytext`
+  parameter.
+* `GET /pks/lookup?op=get` works for fingerprint, long/short key ID, and email search.
+* `GET /pks/verify/{token}` consumes verification tokens and publishes verified UIDs.
+* HKP error responses are `text/plain`.
+* The add path enforces a configurable UTF-8 keytext size limit via
+  `keyserver.pks.max-key-bytes`.
+
+Still open and reflected by current GitHub issues:
+
+* `op=index` / `op=vindex` are not implemented yet (#137).
+* `VerifyEndpoint` still returns `202 Accepted` without user-visible success/failure (#140).
+* `business_transactions.fingerprint` is still not populated (#139).
+* `recordCompleted()` can still leave BTX rows stuck in `STARTED` if it fails (#134).
+* Subkey-count limiting and the remaining add-path config knobs are still pending (#136, #141).
+* `web/rest` still needs a real response contract and RFC 7807 error bodies (#133).
+
 == 1. HKP Protocol Requirements
 
 The HTTP Keyserver Protocol (HKP, informally standardized by SKS/GnuPG interoperability
@@ -59,8 +83,9 @@ The request body is `application/x-www-form-urlencoded` with a single field:
 keytext=<url-encoded ASCII-armored public key block>
 ----
 
-NOTE: The current `AddEndpoint` reads a raw `InputStream`.  It must be changed
-to decode a form parameter named `keytext`.
+NOTE: This is implemented on `main`: `AddEndpoint` accepts a form parameter
+named `keytext`.  The add path also rejects oversized submissions using the
+configurable `keyserver.pks.max-key-bytes` limit.
 
 The success response is HTTP 200 with a plain-text confirmation body.
 On failure, HTTP 4xx with a plain-text error message.
@@ -72,7 +97,7 @@ On failure, HTTP 4xx with a plain-text error message.
 |Command |Trigger
 
 |`AddKeyToVerificationQueueCommand`
-|`POST /pks/add` — already exists, must be completed.
+|`POST /pks/add` — implemented; remaining follow-up is add-path hardening/configuration.
 
 |`VerifyUidCommand`
 |Email link click — verifies one UID and promotes key to published state.
@@ -90,6 +115,10 @@ On failure, HTTP 4xx with a plain-text error message.
 NOTE: `Lookup` and `Index` are read-only queries without side effects.  Consider
 introducing a symmetric `QueryService` / `KeyServerQuery` hierarchy so they do
 not go through the command path and require no `@Transactional` write.
+
+TIP: The most valuable next protocol step is still `op=index` (#137) because it
+unblocks `gpg --search-keys` and turns the existing lookup support into a more
+useful HKP surface.
 
 == 2. Fields to Extract and Store
 
@@ -399,8 +428,7 @@ The current implementation already achieves the target:
 * Each BTX write uses `REQUIRES_NEW`.
 * ✅ The anonymized caller IP is forwarded to `recordStarted()` via `CommandCallerContext`
   (see §8.7).
-* A `fingerprint` field on `business_transactions` should be populated once the
-  handler can extract it (post-parse).
+* `business_transactions.fingerprint` is still not populated; track this as #139.
 
 === 5.3 Audit Log Integration
 
@@ -447,6 +475,9 @@ try {
   `dispatch()` carries `@Transactional`.
 * ✅ BTX lifecycle wiring complete.
 * ✅ `AddKeyToVerificationQueueCommandHandler` implemented.
+* ✅ Configurable add-path keytext size limit implemented via MicroProfile Config.
+* Remaining handler hardening: subkey-count cap (#136) plus configurable token
+  TTL / remaining limits (#141).
 * Add `KeyServerQueryService` for read-only lookups (`@Transactional(READ_ONLY)`).
 
 === 6.4 `application/application-ports`
@@ -471,13 +502,16 @@ try {
 * ✅ `LookupEndpoint`: `op=get` implemented; fingerprint, long/short key-ID,
   email search via `JpaKeyRepository.findBySearch`.  `op=index`/`op=vindex` return 501.
 * ✅ `VerifyEndpoint`: consumes verification token, dispatches `VerifyUidCommand`.
-* ✅ `KeyServerExceptionMapper` for `KeyServerException` subtypes.
+* ✅ `KeyServerExceptionMapper` for `KeyServerException` subtypes; HKP errors are
+  `text/plain` again.
 * `LookupEndpoint`: implement `op=index` and `op=vindex` with machine-readable
   output.  Honor `options=mr` and `exact=on`.
+* `VerifyEndpoint`: return a real success/failure UX instead of unconditional `202` (#140).
 
 === 6.7 `web/rest`
 
-* Add the same exception mappers (or extract to a shared `web-common` module).
+* Existing mapper currently returns ad-hoc JSON; upgrade it to RFC 7807
+  `application/problem+json` (#133).
 * Implement `KeyEndpoint` and `RepositoryEndpoint` stubs once the core flows
   work.
 
@@ -730,8 +764,18 @@ Operators cannot filter the audit log by key fingerprint.
 `LookupEndpoint` returns `text/plain` for 400/404/501 errors.
 This is the correct behavior for HKP compatibility: HKP clients expect plain-text
 error bodies, so HKP endpoints should continue to produce `text/plain` rather than
-`application/problem+json`.  The deferred work is to make error handling consistent
-across the HKP surface (including the existing `ExceptionMapper` classes) so they
-also emit `text/plain` for HKP failures.  If RFC 7807 responses are introduced in
-the future, they should be limited to separate non-HKP/REST endpoints or explicit
-content negotiation, not replace HKP error responses.
+`application/problem+json`.  The HKP side is in the right state now.
+The deferred work is on the REST side: introduce RFC 7807 responses there (#133)
+without regressing HKP compatibility.
+
+== 11. Recommended implementation order from here
+
+. #136 — add a subkey-count cap in `AddKeyToVerificationQueueCommandHandler`.
+. #141 — make token TTL and remaining add-path limits configurable with
+  MicroProfile Config.
+. #139 — write fingerprints into `business_transactions`.
+. #134 — make BTX completion robust if `recordCompleted()` throws.
+. #137 — implement `op=index` for HKP search.
+. #140 — make `VerifyEndpoint` return meaningful success/failure feedback.
+. #133 — move REST errors to `application/problem+json`.
+. #138 — add the VKS-compatible API once HKP and audit basics are settled.
