@@ -692,8 +692,10 @@ See also `.github/AGENTS.adoc § Privacy rules`.
   serialisation point, avoiding application-level locking.
 * Indexed short key-ID search uses `rfingerprint` with `text_pattern_ops` —
   `LOWER()` on the column was correctly removed after being introduced initially.
-* Verification token values are never logged, even in exception messages —
-  discovered and fixed during review.
+* Verification token values are not logged in exception messages or domain-error
+  paths — discovered and fixed during review. The current first-iteration
+  `LoggingVerificationNotificationAdapter` remains an explicit, temporary logging
+  exception as documented above.
 
 === 9.2 Honest design debts introduced during implementation
 
