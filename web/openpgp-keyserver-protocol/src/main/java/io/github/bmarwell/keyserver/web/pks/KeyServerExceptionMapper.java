@@ -20,7 +20,6 @@ import io.github.bmarwell.keyserver.application.api.ex.KeyNotFoundException;
 import io.github.bmarwell.keyserver.application.api.ex.KeyServerException;
 import io.github.bmarwell.keyserver.application.api.ex.KeyValidationException;
 import io.github.bmarwell.keyserver.application.api.ex.VerificationException;
-import jakarta.json.Json;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.ext.ExceptionMapper;
 import jakarta.ws.rs.ext.Provider;
@@ -47,15 +46,13 @@ public class KeyServerExceptionMapper implements ExceptionMapper<KeyServerExcept
             LOG.log(Level.FINE, "Caused by", ex.getCause());
         }
 
-        var bodyBuilder =
-                Json.createObjectBuilder().add("error", safeLabel(ex)).add("correlationId", ex.getCorrelationId());
-
-        ex.getFingerprint().ifPresent(fp -> bodyBuilder.add("fingerprint", fp.value()));
+        String fingerprintPart = ex.getFingerprint().map(fp -> " " + fp.value()).orElse("");
+        String body = safeLabel(ex) + ":" + fingerprintPart + " [correlationId: " + ex.getCorrelationId() + "]";
 
         return Response.status(status)
                 .header("X-Correlation-ID", ex.getCorrelationId())
-                .entity(bodyBuilder.build().toString())
-                .type("application/json")
+                .entity(body)
+                .type("text/plain")
                 .build();
     }
 
