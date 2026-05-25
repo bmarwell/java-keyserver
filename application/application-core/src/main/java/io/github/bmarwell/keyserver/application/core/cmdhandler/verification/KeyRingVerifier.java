@@ -15,11 +15,11 @@ import java.util.Iterator;
 import java.util.List;
 import org.bouncycastle.openpgp.PGPPublicKey;
 import org.bouncycastle.openpgp.PGPPublicKeyRing;
-import org.bouncycastle.openpgp.PGPPublicKeyRingCollection;
 
 /// Verifies parsed OpenPGP key rings against the server's add-path rules.
 public class KeyRingVerifier
-        implements VerificationStep<PGPPublicKeyRingCollection, KeySubmissionVerifier.VerifiedKeySubmission> {
+        implements VerificationStep<
+                KeySubmissionVerifier.VerifiedKeyMaterial, KeySubmissionVerifier.VerifiedKeySubmission> {
 
     private final int maxEmailUids;
     private final int maxSubkeys;
@@ -30,15 +30,19 @@ public class KeyRingVerifier
     }
 
     @Override
-    public KeySubmissionVerifier.VerifiedKeySubmission verify(PGPPublicKeyRingCollection keyRingCollection) {
-        List<KeySubmissionVerifier.VerifiedKeyRing> verifiedKeyRings = new ArrayList<>();
-        for (Iterator<PGPPublicKeyRing> rings = keyRingCollection.getKeyRings(); rings.hasNext(); ) {
-            verifiedKeyRings.add(this.verifyKeyRing(rings.next()));
+    public KeySubmissionVerifier.VerifiedKeySubmission verify(
+            KeySubmissionVerifier.VerifiedKeyMaterial verifiedKeyMaterial) {
+        List<KeySubmissionVerifier.VerifiedKeyIdentity> verifiedIdentities = new ArrayList<>();
+        for (Iterator<PGPPublicKeyRing> rings =
+                        verifiedKeyMaterial.keyRingCollection().getKeyRings();
+                rings.hasNext(); ) {
+            verifiedIdentities.addAll(this.verifyKeyRing(rings.next()));
         }
-        return new KeySubmissionVerifier.VerifiedKeySubmission(List.copyOf(verifiedKeyRings));
+        return new KeySubmissionVerifier.VerifiedKeySubmission(
+                verifiedKeyMaterial.armoredKey(), List.copyOf(verifiedIdentities));
     }
 
-    KeySubmissionVerifier.VerifiedKeyRing verifyKeyRing(PGPPublicKeyRing keyRing) {
+    List<KeySubmissionVerifier.VerifiedKeyIdentity> verifyKeyRing(PGPPublicKeyRing keyRing) {
         PGPPublicKey masterKey = keyRing.getPublicKey();
         String fingerprint = this.fingerprintHex(masterKey);
 
@@ -57,7 +61,7 @@ public class KeyRingVerifier
         List<String> emailUids = this.collectEmailUids(masterKey);
         if (emailUids.isEmpty()) {
             throw new NoVerifiableUidException(
-                    "Key %s has no UIDs with a verifiable email address".formatted(fingerprint));
+                    "Key %s has no UIDs with a verifiable email address".formatted(fingerprint), () -> fingerprint);
         }
         if (emailUids.size() > this.maxEmailUids) {
             throw new TooManyVerifiableUidsException(
@@ -65,14 +69,19 @@ public class KeyRingVerifier
                             .formatted(fingerprint, emailUids.size(), this.maxEmailUids));
         }
 
-        return new KeySubmissionVerifier.VerifiedKeyRing(fingerprint, List.copyOf(emailUids));
+        return emailUids.stream()
+                .map(uidRaw -> new KeySubmissionVerifier.VerifiedKeyIdentity(
+                        fingerprint,
+                        uidRaw,
+                        KeySubmissionVerifier.extractEmail(uidRaw).orElseThrow()))
+                .toList();
     }
 
     List<String> collectEmailUids(PGPPublicKey masterKey) {
         List<String> emailUids = new ArrayList<>();
         for (Iterator<String> userIds = masterKey.getUserIDs(); userIds.hasNext(); ) {
             String uid = userIds.next();
-            if (KeySubmissionVerifier.extractEmail(uid) != null) {
+            if (KeySubmissionVerifier.extractEmail(uid).isPresent()) {
                 emailUids.add(uid);
             }
         }

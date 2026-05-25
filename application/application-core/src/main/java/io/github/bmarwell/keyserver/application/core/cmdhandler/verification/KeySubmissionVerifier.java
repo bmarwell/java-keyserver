@@ -9,6 +9,8 @@ import io.github.bmarwell.keyserver.application.api.commands.AddKeyToVerificatio
 import io.github.bmarwell.keyserver.application.api.commands.CommandCallerContext;
 import io.github.bmarwell.keyserver.application.api.ex.KeyParsingException;
 import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 import org.bouncycastle.openpgp.PGPPublicKeyRingCollection;
 
 /// Runs the add-path verification chain for an armored key submission.
@@ -20,7 +22,7 @@ public class KeySubmissionVerifier
     private final int defaultMaxKeyBytes;
     private final VerificationStep<KeyTextSizeValidator.Input, byte[]> keyTextSizeValidator;
     private final VerificationStep<byte[], PGPPublicKeyRingCollection> keyTextParser;
-    private final VerificationStep<PGPPublicKeyRingCollection, VerifiedKeySubmission> keyRingVerifier;
+    private final VerificationStep<VerifiedKeyMaterial, VerifiedKeySubmission> keyRingVerifier;
 
     public KeySubmissionVerifier(int configuredMaxKeyBytes, int defaultMaxKeyBytes, int maxEmailUids, int maxSubkeys) {
         this(
@@ -36,7 +38,7 @@ public class KeySubmissionVerifier
             int defaultMaxKeyBytes,
             VerificationStep<KeyTextSizeValidator.Input, byte[]> keyTextSizeValidator,
             VerificationStep<byte[], PGPPublicKeyRingCollection> keyTextParser,
-            VerificationStep<PGPPublicKeyRingCollection, VerifiedKeySubmission> keyRingVerifier) {
+            VerificationStep<VerifiedKeyMaterial, VerifiedKeySubmission> keyRingVerifier) {
         this.configuredMaxKeyBytes = configuredMaxKeyBytes;
         this.defaultMaxKeyBytes = defaultMaxKeyBytes;
         this.keyTextSizeValidator = keyTextSizeValidator;
@@ -48,26 +50,28 @@ public class KeySubmissionVerifier
     public VerifiedKeySubmission verify(AddKeyToVerificationQueueCommand command, CommandCallerContext callerContext) {
         byte[] keyTextBytes = this.keyTextSizeValidator.verify(
                 new KeyTextSizeValidator.Input(command.keyText(), this.configuredMaxKeyBytes, this.defaultMaxKeyBytes));
+        String armoredKey = Objects.requireNonNull(command.keyText(), "Verified key text must be non-null");
         PGPPublicKeyRingCollection keyRingCollection = this.keyTextParser.verify(keyTextBytes);
 
         if (!keyRingCollection.iterator().hasNext()) {
             throw new KeyParsingException("Key text contains no valid OpenPGP key rings");
         }
 
-        return this.keyRingVerifier.verify(keyRingCollection);
+        return this.keyRingVerifier.verify(new VerifiedKeyMaterial(armoredKey, keyRingCollection));
     }
 
-    public static String extractEmail(String uid) {
+    public static Optional<String> extractEmail(String uid) {
         if (uid == null || uid.isBlank()) {
-            return null;
+            return Optional.empty();
         }
         int lt = uid.indexOf('<');
         int gt = uid.indexOf('>');
         if (lt >= 0 && gt > lt) {
             String candidate = uid.substring(lt + 1, gt).strip();
-            return isValidEmail(candidate) ? candidate : null;
+            return isValidEmail(candidate) ? Optional.of(candidate) : Optional.empty();
         }
-        return isValidEmail(uid.strip()) ? uid.strip() : null;
+        String candidate = uid.strip();
+        return isValidEmail(candidate) ? Optional.of(candidate) : Optional.empty();
     }
 
     private static boolean isValidEmail(String candidate) {
@@ -84,7 +88,9 @@ public class KeySubmissionVerifier
         return at > 0 && at == candidate.lastIndexOf('@') && at < candidate.length() - 1;
     }
 
-    public record VerifiedKeySubmission(List<VerifiedKeyRing> verifiedKeyRings) {}
+    public record VerifiedKeySubmission(String armoredKey, List<VerifiedKeyIdentity> verifiedIdentities) {}
 
-    public record VerifiedKeyRing(String fingerprint, List<String> emailUids) {}
+    record VerifiedKeyMaterial(String armoredKey, PGPPublicKeyRingCollection keyRingCollection) {}
+
+    public record VerifiedKeyIdentity(String fingerprint, String uidRaw, String uidEmail) {}
 }

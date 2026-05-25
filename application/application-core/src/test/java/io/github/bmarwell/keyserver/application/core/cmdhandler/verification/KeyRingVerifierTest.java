@@ -36,7 +36,8 @@ class KeyRingVerifierTest {
             }
         };
 
-        assertThatThrownBy(() -> verifier.verify(loadTestKeyRingCollection()))
+        assertThatThrownBy(() -> verifier.verify(
+                        new KeySubmissionVerifier.VerifiedKeyMaterial("armored", loadTestKeyRingCollection())))
                 .isInstanceOf(TooManyVerifiableUidsException.class)
                 .hasMessageContaining(String.valueOf(overLimit))
                 .hasMessageContaining(String.valueOf(MAX_EMAIL_UIDS));
@@ -52,7 +53,8 @@ class KeyRingVerifierTest {
             }
         };
 
-        assertThatThrownBy(() -> verifier.verify(loadTestKeyRingCollection()))
+        assertThatThrownBy(() -> verifier.verify(
+                        new KeySubmissionVerifier.VerifiedKeyMaterial("armored", loadTestKeyRingCollection())))
                 .isInstanceOf(TooManySubkeysException.class)
                 .hasMessageContaining(String.valueOf(overLimit))
                 .hasMessageContaining(String.valueOf(MAX_SUBKEYS));

@@ -19,7 +19,6 @@ import jakarta.inject.Inject;
 import java.net.URI;
 import java.time.OffsetDateTime;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
-import org.jspecify.annotations.Nullable;
 
 /// Handles the {@link AddKeyToVerificationQueueCommand}.
 ///
@@ -79,9 +78,9 @@ public class AddKeyToVerificationQueueCommandHandler
     @ConfigProperty(name = MAX_KEY_BYTES_CONFIG_KEY, defaultValue = "" + DEFAULT_MAX_KEY_BYTES)
     int maxKeyBytes;
 
-    private @Nullable CommandVerificationRegistry<
-                    AddKeyToVerificationQueueCommand, KeySubmissionVerifier.VerifiedKeySubmission>
-            keySubmissionVerifier;
+    private CommandVerificationRegistry<AddKeyToVerificationQueueCommand, KeySubmissionVerifier.VerifiedKeySubmission>
+            keySubmissionVerifier = this.newKeySubmissionVerifier(DEFAULT_MAX_KEY_BYTES);
+    private boolean useCustomKeySubmissionVerifier;
 
     @Override
     public <C extends KeyServerCommand> boolean canHandle(C command) {
@@ -91,10 +90,10 @@ public class AddKeyToVerificationQueueCommandHandler
     @Override
     protected CommandVerificationRegistry<AddKeyToVerificationQueueCommand, KeySubmissionVerifier.VerifiedKeySubmission>
             verificationRegistry() {
-        if (this.keySubmissionVerifier != null) {
+        if (this.useCustomKeySubmissionVerifier) {
             return this.keySubmissionVerifier;
         }
-        return new KeySubmissionVerifier(this.maxKeyBytes, DEFAULT_MAX_KEY_BYTES, MAX_EMAIL_UIDS, MAX_SUBKEYS);
+        return this.newKeySubmissionVerifier(this.maxKeyBytes);
     }
 
     @Override
@@ -102,24 +101,24 @@ public class AddKeyToVerificationQueueCommandHandler
             AddKeyToVerificationQueueCommand command,
             KeySubmissionVerifier.VerifiedKeySubmission verification,
             CommandCallerContext callerContext) {
-        String keyText = command.keyText();
-        this.enqueueVerificationRequests(keyText, verification);
+        this.enqueueVerificationRequests(verification);
 
         return KeyServerCommandResponse.success();
     }
 
-    private void enqueueVerificationRequests(
-            String armoredKey, KeySubmissionVerifier.VerifiedKeySubmission verifiedSubmission) {
+    private void enqueueVerificationRequests(KeySubmissionVerifier.VerifiedKeySubmission verifiedSubmission) {
         OffsetDateTime expiresAt = OffsetDateTime.now().plusHours(TOKEN_TTL_HOURS);
-        for (KeySubmissionVerifier.VerifiedKeyRing verifiedKeyRing : verifiedSubmission.verifiedKeyRings()) {
-            String fingerprint = verifiedKeyRing.fingerprint();
-            for (String emailUid : verifiedKeyRing.emailUids()) {
-                String email = KeySubmissionVerifier.extractEmail(emailUid);
-                var request = new VerificationRequest(fingerprint, emailUid, email, armoredKey, expiresAt);
-                long tsid = this.verificationQueueRepository.enqueue(request);
-                URI verificationUri = this.buildVerificationUri(tsid);
-                this.notificationPort.notifyPendingVerification(email, fingerprint, verificationUri);
-            }
+        for (KeySubmissionVerifier.VerifiedKeyIdentity verifiedIdentity : verifiedSubmission.verifiedIdentities()) {
+            var request = new VerificationRequest(
+                    verifiedIdentity.fingerprint(),
+                    verifiedIdentity.uidRaw(),
+                    verifiedIdentity.uidEmail(),
+                    verifiedSubmission.armoredKey(),
+                    expiresAt);
+            long tsid = this.verificationQueueRepository.enqueue(request);
+            URI verificationUri = this.buildVerificationUri(tsid);
+            this.notificationPort.notifyPendingVerification(
+                    verifiedIdentity.uidEmail(), verifiedIdentity.fingerprint(), verificationUri);
         }
     }
 
@@ -144,9 +143,14 @@ public class AddKeyToVerificationQueueCommandHandler
             CommandVerificationRegistry<AddKeyToVerificationQueueCommand, KeySubmissionVerifier.VerifiedKeySubmission>
                     keySubmissionVerifier) {
         this.keySubmissionVerifier = keySubmissionVerifier;
+        this.useCustomKeySubmissionVerifier = true;
     }
 
     void setMaxKeyBytes(int maxKeyBytes) {
         this.maxKeyBytes = maxKeyBytes;
+    }
+
+    private KeySubmissionVerifier newKeySubmissionVerifier(int configuredMaxKeyBytes) {
+        return new KeySubmissionVerifier(configuredMaxKeyBytes, DEFAULT_MAX_KEY_BYTES, MAX_EMAIL_UIDS, MAX_SUBKEYS);
     }
 }

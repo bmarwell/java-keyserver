@@ -7,6 +7,7 @@ package io.github.bmarwell.keyserver.application.core.cmdhandler.verification;
 
 import io.github.bmarwell.keyserver.application.api.ex.KeyParsingException;
 import java.nio.charset.StandardCharsets;
+import org.jspecify.annotations.Nullable;
 
 /// Validates the raw armored-key payload size before any OpenPGP parsing happens.
 public class KeyTextSizeValidator implements VerificationStep<KeyTextSizeValidator.Input, byte[]> {
@@ -32,5 +33,5 @@ public class KeyTextSizeValidator implements VerificationStep<KeyTextSizeValidat
         return keyTextBytes;
     }
 
-    public record Input(String keyText, int configuredMaxKeyBytes, int defaultMaxKeyBytes) {}
+    public record Input(@Nullable String keyText, int configuredMaxKeyBytes, int defaultMaxKeyBytes) {}
 }
