@@ -453,24 +453,27 @@ try {
 
 * ✅ `BusinessTransactionRepository` — BTX lifecycle port (replaces the former `AuditLogPort` idea).
 * ✅ `VerificationQueueRepository` — replaces the former `KeyVerificationQueueDao`.
-* Add `KeyRepository` (replaces stub) with methods for fingerprint/key-ID lookup and insert.
+* ✅ Add `KeyRepository` (replaces stub) with methods for fingerprint/key-ID lookup and insert.
 * Add `UidRepository` for UID-level reads needed by `op=index`.
 
 === 6.5 `repository`
 
 * ✅ `BusinessTransactionEntity` + `PersistentBusinessTransactionRepository`.
 * ✅ `VerificationQueueEntity` + `JpaVerificationQueueRepository`.
-* Add JPA entities: `KeyEntity`, `UidEntity`.
-* Add Flyway migrations for the new tables (see §2).
+* ✅ JPA entities: `KeyEntity`, `UidEntity`.
+* ✅ Flyway migrations for keys and uids tables.
+* Add `UidRepository` for UID-level reads needed by `op=index`.
 
 === 6.6 `web/openpgp-keyserver-protocol`
 
 * ✅ `AddEndpoint`: `application/x-www-form-urlencoded`, `keytext` form parameter,
   IP anonymization via `IpAnonymizer`.
+* ✅ `LookupEndpoint`: `op=get` implemented; fingerprint, long/short key-ID,
+  email search via `JpaKeyRepository.findBySearch`.  `op=index`/`op=vindex` return 501.
+* ✅ `VerifyEndpoint`: consumes verification token, dispatches `VerifyUidCommand`.
+* ✅ `KeyServerExceptionMapper` for `KeyServerException` subtypes.
 * `LookupEndpoint`: implement `op=index` and `op=vindex` with machine-readable
   output.  Honor `options=mr` and `exact=on`.
-* Add `KeyServerExceptionMapper` implementing `ExceptionMapper<KeyServerException>`.
-* Add `InvalidKeyIdExceptionMapper` for the `common/ids` parsing error.
 
 === 6.7 `web/rest`
 
@@ -678,3 +681,57 @@ is wired.  Either:
 
 The `TODO` comment in `LoggingVerificationNotificationAdapter` marks the location.
 See also `.github/AGENTS.adoc § Privacy rules`.
+
+== 10. Self-critique and known design debts
+
+=== 10.1 Things that were done well
+
+* The port/adapter split held cleanly through the VerifyUID work — no leakage
+  of JPA types into the core or HTTP types into the repository.
+* Concurrent first-publish (scenario 7) is solved with a single `INSERT … ON CONFLICT`
+  serialisation point, avoiding application-level locking.
+* Indexed short key-ID search uses `rfingerprint` with `text_pattern_ops` —
+  `LOWER()` on the column was correctly removed after being introduced initially.
+* Verification token values are not logged in exception messages or domain-error
+  paths — discovered and fixed during review. The current first-iteration
+  `LoggingVerificationNotificationAdapter` remains an explicit, temporary logging
+  exception as documented above.
+
+=== 10.2 Honest design debts introduced during implementation
+
+==== TOCTOU in `publishVerifiedUid`
+
+The "skip BC parse if key exists" optimisation uses a non-locking `find` before
+the INSERT.  Two concurrent first-publish transactions can both pass that check,
+both do a full Bouncy Castle parse, and one of the two parses is discarded.
+The `ON CONFLICT DO NOTHING` INSERT still serialises correctly; this is a wasted
+CPU cycle, not a correctness bug.
+
+==== `Assertions.fail()` instead of AssertJ in scenario 7 test
+
+`VerifyUidCommandHandlerTest` uses `org.junit.jupiter.api.Assertions.fail()` in
+the timeout branch while the rest of the file uses AssertJ.  Should be replaced
+with `assertThat(completed).as("threads completed within timeout").isTrue()`.
+
+==== `VerifyEndpoint` always returns 202
+
+The verification endpoint cannot distinguish success from failure in its current
+form — the command is dispatched asynchronously and the HTTP thread returns before
+the outcome is known.  The user receives no feedback.  A synchronous verification
+path (or a status-polling endpoint) is needed for a production-grade UX.
+
+==== `business_transactions.fingerprint` always null
+
+No handler populates the fingerprint column on the BTX row.
+Operators cannot filter the audit log by key fingerprint.
+
+==== Error response content type
+
+`LookupEndpoint` returns `text/plain` for 400/404/501 errors.
+This is the correct behavior for HKP compatibility: HKP clients expect plain-text
+error bodies, so HKP endpoints should continue to produce `text/plain` rather than
+`application/problem+json`.  The deferred work is to make error handling consistent
+across the HKP surface (including the existing `ExceptionMapper` classes) so they
+also emit `text/plain` for HKP failures.  If RFC 7807 responses are introduced in
+the future, they should be limited to separate non-HKP/REST endpoints or explicit
+content negotiation, not replace HKP error responses.
