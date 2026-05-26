@@ -20,6 +20,7 @@ import java.io.Serializable;
 import java.util.logging.Level;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
+import org.jspecify.annotations.Nullable;
 
 /// Dispatches commands to their handlers inside a dedicated virtual-thread executor.
 ///
@@ -47,8 +48,8 @@ import java.util.logging.Logger;
 ///    bypassed by a same-bean self-invocation.
 /// 5. On success the BTX row is updated to `COMPLETED` (also `REQUIRES_NEW`).
 /// 6. If the completion write itself fails after a successful handler, the service
-///    falls back to marking the BTX row `FAILED` with a dedicated error type so the
-///    row still reaches a terminal state.
+///    falls back to marking the BTX row `FAILED` with the original exception type
+///    and a prefixed audit message so the row still reaches a terminal state.
 /// 7. On any exception the BTX row is updated to `FAILED` (`REQUIRES_NEW`) and
 ///    the exception is logged.  It does NOT propagate back — the caller fired and forgot.
 @ManagedExecutorDefinition(name = "java:app/concurrent/KeyServerCommandExecutor", virtual = true, maxAsync = -1)
@@ -74,55 +75,65 @@ public class KeyServerCommandService implements CommandService, Serializable {
     public <T extends KeyServerCommand> void handleCommand(T keyServerCommand, CommandCallerContext callerContext) {
         long btxId = this.tsidFactory.generate().toLong();
         String commandType = keyServerCommand.getClass().getSimpleName();
+        boolean startedRecorded = false;
+        boolean dispatchedSuccessfully = false;
 
         try {
             this.btxRepository.recordStarted(btxId, commandType, callerContext.anonymizedCallerIp());
+            startedRecorded = true;
             this.btxContext.initialize(btxId);
-        } catch (Exception ex) {
-            this.logWithThrowable(
-                    Level.WARNING,
-                    ex,
-                    "Failed to initialize BTX {0} for command {1}; command not dispatched",
-                    btxId,
-                    commandType);
-            return;
-        }
-
-        try {
             this.dispatcher.dispatch(keyServerCommand, callerContext);
+            dispatchedSuccessfully = true;
         } catch (Exception ex) {
+            if (!startedRecorded) {
+                this.logWithThrowable(
+                        Level.WARNING,
+                        ex,
+                        "Failed to record STARTED BTX {0} for command {1}; command not dispatched",
+                        btxId,
+                        commandType);
+                return;
+            }
             this.recordFailedSafely(
                     btxId,
                     commandType,
                     ex.getClass().getSimpleName(),
                     ex.getMessage(),
                     ex,
-                    "Command {0} failed for BTX {1}",
+                    "Failed to prepare or dispatch command {0} for BTX {1}",
                     commandType,
                     btxId);
-            return;
+        } finally {
+            if (dispatchedSuccessfully) {
+                try {
+                    this.btxRepository.recordCompleted(btxId);
+                } catch (Exception ex) {
+                    this.recordFailedSafely(
+                            btxId,
+                            commandType,
+                            ex.getClass().getSimpleName(),
+                            this.toCompletionWriteFailureMessage(ex.getMessage()),
+                            ex,
+                            "Failed to mark BTX {0} COMPLETED after successful command {1}; attempting terminal FAILED fallback",
+                            btxId,
+                            commandType);
+                }
+            }
         }
+    }
 
-        try {
-            this.btxRepository.recordCompleted(btxId);
-        } catch (Exception ex) {
-            this.recordFailedSafely(
-                    btxId,
-                    commandType,
-                    ex.getClass().getSimpleName(),
-                    "BTX completion write failure: " + ex.getMessage(),
-                    ex,
-                    "Failed to mark BTX {0} COMPLETED after successful command {1}; attempting terminal FAILED fallback",
-                    btxId,
-                    commandType);
+    private String toCompletionWriteFailureMessage(@Nullable String errorMessage) {
+        if (errorMessage == null) {
+            return "BTX completion write failure";
         }
+        return "BTX completion write failure: " + errorMessage;
     }
 
     private void recordFailedSafely(
             long btxId,
             String commandType,
             String errorType,
-            String errorMessage,
+            @Nullable String errorMessage,
             Throwable throwable,
             String logMessage,
             Object... logParameters) {

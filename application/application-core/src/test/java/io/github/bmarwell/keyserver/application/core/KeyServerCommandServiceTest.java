@@ -131,6 +131,40 @@ class KeyServerCommandServiceTest {
     }
 
     @Test
+    void records_failed_when_context_initialize_throws_after_record_started() {
+        // given
+        // Once the STARTED row exists, a later context-initialization failure must still end in a terminal BTX state.
+        var trackingRepo = new TrackingBusinessTransactionRepository();
+        var handler = new SuccessCommandHandler();
+        var btxContext = new BusinessTransactionContext();
+        btxContext.initialize(123L);
+        KeyServerCommandService service = buildService(trackingRepo, SimpleInstance.of(handler), btxContext);
+
+        // when
+        service.handleCommand(new TestCommand(), CommandCallerContext.empty());
+
+        // then
+        assertThat(trackingRepo.startedCount)
+                .as("the BTX row must already exist before the second initialize() call fails")
+                .isEqualTo(1);
+        assertThat(handler.executeCount)
+                .as("dispatch must not continue after the request-scoped BTX context rejects reinitialization")
+                .isZero();
+        assertThat(trackingRepo.failedCount)
+                .as("an initialization failure after recordStarted() must still move the BTX to FAILED")
+                .isEqualTo(1);
+        assertThat(trackingRepo.completedCount)
+                .as("a command that never dispatched must not reach COMPLETED")
+                .isZero();
+        assertThat(trackingRepo.lastErrorType)
+                .as("the persisted BTX failure should keep the concrete initialization exception type")
+                .isEqualTo("IllegalStateException");
+        assertThat(trackingRepo.lastErrorMessage)
+                .as("the BTX audit message should preserve why the request-scoped context rejected initialization")
+                .isEqualTo("BusinessTransactionContext already initialized");
+    }
+
+    @Test
     void records_completed_after_successful_dispatch() {
         // given
         // A successful handler must drive the normal BTX happy path all the way to recordCompleted().
