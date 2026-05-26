@@ -148,11 +148,15 @@ class KeyServerCommandServiceTest {
                 .as("the regression test must prove the service reached recordCompleted() before the simulated failure")
                 .isEqualTo(1);
         assertThat(trackingRepo.completedCount)
-                .as("the repository never recorded COMPLETED because recordCompleted() threw")
+                .as("the repository must not report COMPLETED when the completion write failed")
                 .isZero();
         assertThat(trackingRepo.failedCount)
-                .as("a completion-write failure after a successful handler must not mark the BTX as FAILED")
-                .isZero();
+                .as(
+                        "a completion-write failure after a successful handler must still move the BTX to a terminal FAILED state")
+                .isEqualTo(1);
+        assertThat(trackingRepo.lastErrorType)
+                .as("completion-write failures should use a dedicated BTX error type for diagnosis")
+                .isEqualTo(KeyServerCommandService.BTX_COMPLETION_WRITE_FAILURE);
     }
 
     private static final class SuccessCommandHandler implements CommandHandler<TestCommand> {
@@ -184,8 +188,8 @@ class KeyServerCommandServiceTest {
 
         @Override
         public void recordStarted(long btxId, String commandType, @Nullable String callerIp) {
-            startedCount++;
-            lastCallerIp = callerIp;
+            this.startedCount++;
+            this.lastCallerIp = callerIp;
         }
 
         @Override
@@ -197,8 +201,8 @@ class KeyServerCommandServiceTest {
 
         @Override
         public void recordFailed(long btxId, String errorType, @Nullable String errorMessage) {
-            failedCount++;
-            lastErrorType = errorType;
+            this.failedCount++;
+            this.lastErrorType = errorType;
         }
 
         protected void beforeMarkingCompleted(long btxId) {}

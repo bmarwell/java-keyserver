@@ -44,12 +44,17 @@ import java.util.logging.Logger;
 ///    bean ensures CDI interceptors fire through the proxy rather than being
 ///    bypassed by a same-bean self-invocation.
 /// 5. On success the BTX row is updated to `COMPLETED` (also `REQUIRES_NEW`).
-/// 6. On any exception the BTX row is updated to `FAILED` (`REQUIRES_NEW`) and
+/// 6. If the completion write itself fails after a successful handler, the service
+///    falls back to marking the BTX row `FAILED` with a dedicated error type so the
+///    row still reaches a terminal state.
+/// 7. On any exception the BTX row is updated to `FAILED` (`REQUIRES_NEW`) and
 ///    the exception is logged.  It does NOT propagate back — the caller fired and forgot.
 @ManagedExecutorDefinition(name = "java:app/concurrent/KeyServerCommandExecutor", virtual = true, maxAsync = -1)
 @Default
 @ApplicationScoped
 public class KeyServerCommandService implements CommandService, Serializable {
+
+    static final String BTX_COMPLETION_WRITE_FAILURE = "BtxCompletionWriteFailure";
 
     private static final Logger LOG = Logger.getLogger(KeyServerCommandService.class.getName());
 
@@ -87,9 +92,12 @@ public class KeyServerCommandService implements CommandService, Serializable {
         try {
             this.btxRepository.recordCompleted(btxId);
         } catch (Exception ex) {
-            LOG.log(Level.WARNING, "Failed to mark BTX {0} COMPLETED after successful command {1}: {2}", new Object[] {
-                btxId, commandType, ex.getMessage()
-            });
+            this.btxRepository.recordFailed(btxId, BTX_COMPLETION_WRITE_FAILURE, ex.getMessage());
+            LOG.log(
+                    Level.WARNING,
+                    "Failed to mark BTX " + btxId + " COMPLETED after successful command " + commandType
+                            + "; BTX marked FAILED instead",
+                    ex);
         }
     }
 
