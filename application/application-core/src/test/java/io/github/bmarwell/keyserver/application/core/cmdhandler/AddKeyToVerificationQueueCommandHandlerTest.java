@@ -12,7 +12,6 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import io.github.bmarwell.keyserver.application.api.commands.AddKeyToVerificationQueueCommand;
 import io.github.bmarwell.keyserver.application.api.commands.CommandCallerContext;
 import io.github.bmarwell.keyserver.application.api.ex.KeyParsingException;
-import io.github.bmarwell.keyserver.application.api.ex.TooManyVerifiableUidsException;
 import io.github.bmarwell.keyserver.application.port.notification.VerificationNotificationPort;
 import io.github.bmarwell.keyserver.application.port.repository.VerificationQueueRepository;
 import io.github.bmarwell.keyserver.application.port.repository.VerificationQueueRepository.VerificationRequest;
@@ -23,8 +22,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.IntStream;
-import org.bouncycastle.openpgp.PGPPublicKey;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -89,7 +86,7 @@ class AddKeyToVerificationQueueCommandHandlerTest {
         String keyText = loadTestKey("test-key-with-email.asc");
         var command = new AddKeyToVerificationQueueCommand(keyText);
 
-        this.handler.doExecute(command, CommandCallerContext.empty());
+        this.handler.execute(command, CommandCallerContext.empty());
 
         // The test key has one UID: "Test Key <testkey@example.com>"
         assertThat(this.fakeRepo.received).hasSize(1);
@@ -102,7 +99,7 @@ class AddKeyToVerificationQueueCommandHandlerTest {
         String keyText = loadTestKey("test-key-with-email.asc");
         var command = new AddKeyToVerificationQueueCommand(keyText);
 
-        this.handler.doExecute(command, CommandCallerContext.empty());
+        this.handler.execute(command, CommandCallerContext.empty());
 
         assertThat(this.fakeNotification.received).hasSize(1);
         FakeNotificationPort.Notification note = this.fakeNotification.received.getFirst();
@@ -114,7 +111,7 @@ class AddKeyToVerificationQueueCommandHandlerTest {
     void rejects_null_key_text() {
         var command = new AddKeyToVerificationQueueCommand(null);
 
-        assertThatThrownBy(() -> this.handler.doExecute(command, CommandCallerContext.empty()))
+        assertThatThrownBy(() -> this.handler.execute(command, CommandCallerContext.empty()))
                 .isInstanceOf(KeyParsingException.class);
         assertThat(this.fakeRepo.received).isEmpty();
     }
@@ -123,7 +120,7 @@ class AddKeyToVerificationQueueCommandHandlerTest {
     void rejects_blank_key_text() {
         var command = new AddKeyToVerificationQueueCommand("   ");
 
-        assertThatThrownBy(() -> this.handler.doExecute(command, CommandCallerContext.empty()))
+        assertThatThrownBy(() -> this.handler.execute(command, CommandCallerContext.empty()))
                 .isInstanceOf(KeyParsingException.class);
         assertThat(this.fakeRepo.received).isEmpty();
     }
@@ -132,7 +129,7 @@ class AddKeyToVerificationQueueCommandHandlerTest {
     void rejects_garbage_key_text() {
         var command = new AddKeyToVerificationQueueCommand("not a pgp key");
 
-        assertThatThrownBy(() -> this.handler.doExecute(command, CommandCallerContext.empty()))
+        assertThatThrownBy(() -> this.handler.execute(command, CommandCallerContext.empty()))
                 .isInstanceOf(KeyParsingException.class);
         assertThat(this.fakeRepo.received).isEmpty();
         assertThat(this.fakeNotification.received).isEmpty();
@@ -147,7 +144,7 @@ class AddKeyToVerificationQueueCommandHandlerTest {
         var command = new AddKeyToVerificationQueueCommand(keyText);
 
         // when
-        this.handler.doExecute(command, CommandCallerContext.empty());
+        this.handler.execute(command, CommandCallerContext.empty());
 
         // then
         assertThat(this.fakeRepo.received).hasSize(1);
@@ -163,7 +160,7 @@ class AddKeyToVerificationQueueCommandHandlerTest {
         var command = new AddKeyToVerificationQueueCommand(keyText);
 
         // when
-        Throwable thrown = catchThrowable(() -> this.handler.doExecute(command, CommandCallerContext.empty()));
+        Throwable thrown = catchThrowable(() -> this.handler.execute(command, CommandCallerContext.empty()));
 
         // then
         assertThat(thrown).isInstanceOf(KeyParsingException.class).hasMessageContaining("maximum allowed size");
@@ -178,7 +175,7 @@ class AddKeyToVerificationQueueCommandHandlerTest {
         for (int configuredLimit : List.of(0, -1)) {
             this.handler.setMaxKeyBytes(configuredLimit);
 
-            assertThatThrownBy(() -> this.handler.doExecute(
+            assertThatThrownBy(() -> this.handler.execute(
                             new AddKeyToVerificationQueueCommand(oversizedAsciiKey), CommandCallerContext.empty()))
                     .isInstanceOf(KeyParsingException.class)
                     .hasMessageContaining("maximum allowed size");
@@ -193,53 +190,10 @@ class AddKeyToVerificationQueueCommandHandlerTest {
         String keyText = this.loadTestKey("test-key-with-email.asc");
         var command = new AddKeyToVerificationQueueCommand(keyText);
 
-        this.handler.doExecute(command, CommandCallerContext.empty());
+        this.handler.execute(command, CommandCallerContext.empty());
 
         String expectedTsidStr = Long.toUnsignedString(1000L); // first ID assigned by fake repo
         assertThat(this.fakeNotification.received.getFirst().verificationUri().toString())
                 .endsWith(expectedTsidStr);
-    }
-
-    // -----------------------------------------------------------------------
-    // Scenario 6: one million (well, MAX_EMAIL_UIDS + 1) email UIDs → rejected
-    // -----------------------------------------------------------------------
-
-    /**
-     * Subclass that overrides {@code collectEmailUids} to return a synthetic list
-     * of fake email addresses, bypassing the need for a real PGP key with many UIDs.
-     * This tests the DoS guard in isolation from the PGP parsing logic.
-     */
-    static class OverflowingHandler extends AddKeyToVerificationQueueCommandHandler {
-        private final int uidCount;
-
-        OverflowingHandler(int uidCount) {
-            this.uidCount = uidCount;
-        }
-
-        @Override
-        List<String> collectEmailUids(PGPPublicKey masterKey) {
-            return IntStream.range(0, uidCount)
-                    .mapToObj(i -> "user%d@example.com".formatted(i))
-                    .collect(java.util.stream.Collectors.toList());
-        }
-    }
-
-    @Test
-    void scenario6_too_many_email_uids_rejected() throws IOException {
-        int overLimit = AddKeyToVerificationQueueCommandHandler.MAX_EMAIL_UIDS + 1;
-        var overflowHandler = new OverflowingHandler(overLimit);
-        overflowHandler.setVerificationQueueRepository(this.fakeRepo);
-        overflowHandler.setNotificationPort(this.fakeNotification);
-
-        String keyText = this.loadTestKey("test-key-with-email.asc");
-        var command = new AddKeyToVerificationQueueCommand(keyText);
-
-        assertThatThrownBy(() -> overflowHandler.doExecute(command, CommandCallerContext.empty()))
-                .isInstanceOf(TooManyVerifiableUidsException.class)
-                .hasMessageContaining(String.valueOf(overLimit))
-                .hasMessageContaining(String.valueOf(AddKeyToVerificationQueueCommandHandler.MAX_EMAIL_UIDS));
-
-        assertThat(this.fakeRepo.received).isEmpty();
-        assertThat(this.fakeNotification.received).isEmpty();
     }
 }

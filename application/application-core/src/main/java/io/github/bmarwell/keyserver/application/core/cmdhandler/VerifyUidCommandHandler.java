@@ -11,6 +11,9 @@ import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommandRes
 import io.github.bmarwell.keyserver.application.api.commands.VerifyUidCommand;
 import io.github.bmarwell.keyserver.application.api.ex.TokenExpiredException;
 import io.github.bmarwell.keyserver.application.api.ex.TokenInvalidException;
+import io.github.bmarwell.keyserver.application.core.cmdhandler.verification.CommandVerificationRegistry;
+import io.github.bmarwell.keyserver.application.core.cmdhandler.verification.NoCommandVerification;
+import io.github.bmarwell.keyserver.application.core.cmdhandler.verification.NoOpCommandVerificationRegistry;
 import io.github.bmarwell.keyserver.application.port.repository.KeyRepository;
 import io.github.bmarwell.keyserver.application.port.repository.VerificationQueueRepository;
 import io.github.bmarwell.keyserver.application.port.repository.VerificationQueueRepository.VerificationEntry;
@@ -39,7 +42,10 @@ import java.time.OffsetDateTime;
 /// The `CommandCallerContext` is threaded through for audit consistency but this
 /// handler does not require the IP directly.
 @RequestScoped
-public class VerifyUidCommandHandler extends AbstractKeyServerCommandHandler<VerifyUidCommand> {
+public class VerifyUidCommandHandler extends AbstractKeyServerCommandHandler<VerifyUidCommand, NoCommandVerification> {
+
+    private final CommandVerificationRegistry<VerifyUidCommand, NoCommandVerification> noOpVerificationRegistry =
+            new NoOpCommandVerificationRegistry<>();
 
     @Inject
     VerificationQueueRepository verificationQueueRepository;
@@ -53,10 +59,16 @@ public class VerifyUidCommandHandler extends AbstractKeyServerCommandHandler<Ver
     }
 
     @Override
-    KeyServerCommandResponse doExecute(VerifyUidCommand command, CommandCallerContext callerContext) {
-        long tokenId = parseToken(command.token());
+    protected CommandVerificationRegistry<VerifyUidCommand, NoCommandVerification> verificationRegistry() {
+        return this.noOpVerificationRegistry;
+    }
 
-        VerificationEntry entry = verificationQueueRepository
+    @Override
+    KeyServerCommandResponse doExecute(
+            VerifyUidCommand command, NoCommandVerification verification, CommandCallerContext callerContext) {
+        long tokenId = this.parseToken(command.token());
+
+        VerificationEntry entry = this.verificationQueueRepository
                 .findPendingById(tokenId)
                 .orElseThrow(() -> new TokenInvalidException(
                         // Do not echo the token value into the exception message.
@@ -69,8 +81,9 @@ public class VerifyUidCommandHandler extends AbstractKeyServerCommandHandler<Ver
             throw new TokenExpiredException("Verification token has expired for fingerprint " + entry.fingerprint());
         }
 
-        verificationQueueRepository.markVerified(tokenId);
-        keyRepository.publishVerifiedUid(entry.fingerprint(), entry.uidRaw(), entry.uidEmail(), entry.armoredKey());
+        this.verificationQueueRepository.markVerified(tokenId);
+        this.keyRepository.publishVerifiedUid(
+                entry.fingerprint(), entry.uidRaw(), entry.uidEmail(), entry.armoredKey());
 
         return KeyServerCommandResponse.success();
     }

@@ -201,6 +201,9 @@ For lookup use cases, the flow is shorter:
   `PESSIMISTIC_WRITE` row lock — no application-level locking needed.
 * Third-party certification stripping is in place: only self-signatures are
   stored, preventing the server from becoming a social-graph database.
+* The add-path validation now follows a cleaner structure: the abstract handler
+  owns the pre-execution verification hook, while the add command delegates its
+  checks to a small verification registry/chain of single-purpose steps.
 
 == 9. Verification flow
 
@@ -243,6 +246,27 @@ at exactly the same moment:
    and re-strips.  The final committed state contains both UIDs.
 
 No UID is lost and no dirty state is written.
+
+=== Validation architecture
+
+Pre-execution command verification now has two layers:
+
+* **Template method** — `AbstractKeyServerCommandHandler.execute(...)` always runs
+  the command's verification registry before `doExecute(...)`.
+* **Verification registry** — a handler can provide a typed
+  `CommandVerificationRegistry<T, V>` that returns prepared verification output
+  for the actual business execution step.
+
+For `AddKeyToVerificationQueueCommand`, that registry is composed from small
+steps:
+
+* `KeyTextSizeValidator`
+* `KeyTextParser`
+* `KeyRingVerifier`
+
+This keeps "one class, one responsibility" while making it harder for a handler
+to forget validation entirely. A future enhancement is to migrate more commands
+onto the same pattern as their preconditions grow.
 
 == 8. Identity strategy
 
