@@ -98,6 +98,35 @@ class KeyServerCommandServiceTest {
     }
 
     @Test
+    void records_completed_after_successful_dispatch() {
+        // given
+        // A successful handler must drive the normal BTX happy path all the way to recordCompleted().
+        var trackingRepo = new TrackingBusinessTransactionRepository();
+        var handler = new SuccessCommandHandler();
+        KeyServerCommandService service = buildService(trackingRepo, SimpleInstance.of(handler));
+
+        // when
+        service.handleCommand(new TestCommand(), CommandCallerContext.empty());
+
+        // then
+        assertThat(handler.executeCount)
+                .as("the happy path must still execute the matched command handler exactly once")
+                .isEqualTo(1);
+        assertThat(trackingRepo.startedCount)
+                .as("successful commands must still open a BTX row before dispatch")
+                .isEqualTo(1);
+        assertThat(trackingRepo.recordCompletedAttemptCount)
+                .as("the success path must reach the shared recordCompleted() implementation")
+                .isEqualTo(1);
+        assertThat(trackingRepo.completedCount)
+                .as("successful commands must mark the BTX as COMPLETED")
+                .isEqualTo(1);
+        assertThat(trackingRepo.failedCount)
+                .as("the happy path must not record a BTX failure")
+                .isZero();
+    }
+
+    @Test
     void ignores_record_completed_failure_after_successful_dispatch() {
         // given
         // Issue #134: a successful handler plus failing recordCompleted() must not reclassify the BTX as FAILED.
@@ -162,6 +191,8 @@ class KeyServerCommandServiceTest {
         @Override
         public void recordCompleted(long btxId) {
             this.recordCompletedAttemptCount++;
+            this.beforeMarkingCompleted(btxId);
+            this.completedCount++;
         }
 
         @Override
@@ -169,12 +200,13 @@ class KeyServerCommandServiceTest {
             failedCount++;
             lastErrorType = errorType;
         }
+
+        protected void beforeMarkingCompleted(long btxId) {}
     }
 
     private static final class ThrowingOnRecordCompletedRepository extends TrackingBusinessTransactionRepository {
         @Override
-        public void recordCompleted(long btxId) {
-            super.recordCompleted(btxId);
+        protected void beforeMarkingCompleted(long btxId) {
             throw new IllegalStateException("simulated completion write failure");
         }
     }
