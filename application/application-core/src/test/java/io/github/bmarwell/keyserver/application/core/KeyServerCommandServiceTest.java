@@ -101,8 +101,7 @@ class KeyServerCommandServiceTest {
     void ignores_record_completed_failure_after_successful_dispatch() {
         // given
         // Issue #134: a successful handler plus failing recordCompleted() must not reclassify the BTX as FAILED.
-        var trackingRepo = new TrackingBusinessTransactionRepository();
-        trackingRepo.throwOnRecordCompleted = true;
+        var trackingRepo = new ThrowingOnRecordCompletedRepository();
         var handler = new SuccessCommandHandler();
         KeyServerCommandService service = buildService(trackingRepo, SimpleInstance.of(handler));
 
@@ -142,12 +141,11 @@ class KeyServerCommandServiceTest {
         }
     }
 
-    private static final class TrackingBusinessTransactionRepository implements BusinessTransactionRepository {
+    private static class TrackingBusinessTransactionRepository implements BusinessTransactionRepository {
         int startedCount;
         int recordCompletedAttemptCount;
         int completedCount;
         int failedCount;
-        boolean throwOnRecordCompleted;
 
         @Nullable
         String lastCallerIp;
@@ -164,16 +162,20 @@ class KeyServerCommandServiceTest {
         @Override
         public void recordCompleted(long btxId) {
             this.recordCompletedAttemptCount++;
-            if (this.throwOnRecordCompleted) {
-                throw new IllegalStateException("simulated completion write failure");
-            }
-            this.completedCount++;
         }
 
         @Override
         public void recordFailed(long btxId, String errorType, @Nullable String errorMessage) {
             failedCount++;
             lastErrorType = errorType;
+        }
+    }
+
+    private static final class ThrowingOnRecordCompletedRepository extends TrackingBusinessTransactionRepository {
+        @Override
+        public void recordCompleted(long btxId) {
+            super.recordCompleted(btxId);
+            throw new IllegalStateException("simulated completion write failure");
         }
     }
 }
