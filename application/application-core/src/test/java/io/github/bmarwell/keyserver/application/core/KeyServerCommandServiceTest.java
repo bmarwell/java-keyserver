@@ -25,12 +25,19 @@ class KeyServerCommandServiceTest {
     private static KeyServerCommandService buildService(
             TrackingBusinessTransactionRepository trackingRepo,
             SimpleInstance<CommandHandler<? extends KeyServerCommand>> handlers) {
+        return buildService(trackingRepo, handlers, new BusinessTransactionContext());
+    }
+
+    private static KeyServerCommandService buildService(
+            TrackingBusinessTransactionRepository trackingRepo,
+            SimpleInstance<CommandHandler<? extends KeyServerCommand>> handlers,
+            BusinessTransactionContext btxContext) {
         var dispatcher = new TransactionalCommandDispatcher();
         dispatcher.setCommandHandlers(handlers);
         KeyServerCommandService service = new KeyServerCommandService();
         service.setDispatcher(dispatcher);
         service.setBtxRepository(trackingRepo);
-        service.setBtxContext(new BusinessTransactionContext());
+        service.setBtxContext(btxContext);
         service.setTsidFactory(
                 TSID.Factory.builder().withNodeBits(10).withNode(0).build());
         return service;
@@ -98,6 +105,32 @@ class KeyServerCommandServiceTest {
     }
 
     @Test
+    void swallows_record_started_failure_before_dispatch() {
+        // given
+        // Fire-and-forget dispatch must not propagate when the STARTED write itself fails.
+        var trackingRepo = new ThrowingOnRecordStartedRepository();
+        var handler = new SuccessCommandHandler();
+        KeyServerCommandService service = buildService(trackingRepo, SimpleInstance.of(handler));
+
+        // when
+        service.handleCommand(new TestCommand(), CommandCallerContext.empty());
+
+        // then
+        assertThat(trackingRepo.recordStartedAttemptCount)
+                .as("the service must attempt to create the STARTED BTX row before any handler dispatch")
+                .isEqualTo(1);
+        assertThat(handler.executeCount)
+                .as("dispatch must not continue when the STARTED BTX write failed")
+                .isZero();
+        assertThat(trackingRepo.failedCount)
+                .as("without a durable STARTED row, the service cannot persist a terminal BTX failure")
+                .isZero();
+        assertThat(trackingRepo.completedCount)
+                .as("a command that never dispatched must not reach COMPLETED")
+                .isZero();
+    }
+
+    @Test
     void records_completed_after_successful_dispatch() {
         // given
         // A successful handler must drive the normal BTX happy path all the way to recordCompleted().
@@ -156,8 +189,11 @@ class KeyServerCommandServiceTest {
                         "a completion-write failure after a successful handler must still move the BTX to a terminal FAILED state")
                 .isEqualTo(1);
         assertThat(trackingRepo.lastErrorType)
-                .as("completion-write failures should use a dedicated BTX error type for diagnosis")
-                .isEqualTo(KeyServerCommandService.BTX_COMPLETION_WRITE_FAILURE);
+                .as("completion-write failures should preserve the concrete persistence exception type for diagnosis")
+                .isEqualTo("IllegalStateException");
+        assertThat(trackingRepo.lastErrorMessage)
+                .as("completion-write failures should still be clearly marked in the stored audit message")
+                .isEqualTo("BTX completion write failure: simulated completion write failure");
     }
 
     @Test
@@ -203,6 +239,7 @@ class KeyServerCommandServiceTest {
 
     private static class TrackingBusinessTransactionRepository implements BusinessTransactionRepository {
         int startedCount;
+        int recordStartedAttemptCount;
         int recordCompletedAttemptCount;
         int recordFailedAttemptCount;
         int completedCount;
@@ -214,8 +251,13 @@ class KeyServerCommandServiceTest {
         @Nullable
         String lastErrorType;
 
+        @Nullable
+        String lastErrorMessage;
+
         @Override
         public void recordStarted(long btxId, String commandType, @Nullable String callerIp) {
+            this.recordStartedAttemptCount++;
+            this.beforeMarkingStarted(btxId, commandType, callerIp);
             this.startedCount++;
             this.lastCallerIp = callerIp;
         }
@@ -233,11 +275,21 @@ class KeyServerCommandServiceTest {
             this.beforeMarkingFailed(btxId, errorType, errorMessage);
             this.failedCount++;
             this.lastErrorType = errorType;
+            this.lastErrorMessage = errorMessage;
         }
+
+        protected void beforeMarkingStarted(long btxId, String commandType, @Nullable String callerIp) {}
 
         protected void beforeMarkingCompleted(long btxId) {}
 
         protected void beforeMarkingFailed(long btxId, String errorType, @Nullable String errorMessage) {}
+    }
+
+    private static final class ThrowingOnRecordStartedRepository extends TrackingBusinessTransactionRepository {
+        @Override
+        protected void beforeMarkingStarted(long btxId, String commandType, @Nullable String callerIp) {
+            throw new IllegalStateException("simulated started write failure");
+        }
     }
 
     private static class ThrowingOnRecordCompletedRepository extends TrackingBusinessTransactionRepository {

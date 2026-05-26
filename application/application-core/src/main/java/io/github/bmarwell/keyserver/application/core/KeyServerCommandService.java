@@ -40,6 +40,7 @@ import java.util.logging.Logger;
 /// 3. The BTX ID is stored in the `@RequestScoped` `BusinessTransactionContext`
 ///    so that any downstream component (audit writer, DAO) can reference it
 ///    without explicit parameter passing.
+///    If either step 2 or 3 fails, the error is logged and the command is not dispatched.
 /// 4. The command handler runs inside a `@Transactional` boundary provided by
 ///    the injected {@link TransactionalCommandDispatcher}.  Using a separate
 ///    bean ensures CDI interceptors fire through the proxy rather than being
@@ -54,9 +55,6 @@ import java.util.logging.Logger;
 @Default
 @ApplicationScoped
 public class KeyServerCommandService implements CommandService, Serializable {
-
-    static final String BTX_COMPLETION_WRITE_FAILURE = "BtxCompletionWriteFailure";
-
     private static final Logger LOG = Logger.getLogger(KeyServerCommandService.class.getName());
 
     @Inject
@@ -77,38 +75,67 @@ public class KeyServerCommandService implements CommandService, Serializable {
         long btxId = this.tsidFactory.generate().toLong();
         String commandType = keyServerCommand.getClass().getSimpleName();
 
-        this.btxRepository.recordStarted(btxId, commandType, callerContext.anonymizedCallerIp());
-        this.btxContext.initialize(btxId);
+        try {
+            this.btxRepository.recordStarted(btxId, commandType, callerContext.anonymizedCallerIp());
+            this.btxContext.initialize(btxId);
+        } catch (Exception ex) {
+            this.logWithThrowable(
+                    Level.WARNING,
+                    ex,
+                    "Failed to initialize BTX {0} for command {1}; command not dispatched",
+                    btxId,
+                    commandType);
+            return;
+        }
 
         try {
             this.dispatcher.dispatch(keyServerCommand, callerContext);
         } catch (Exception ex) {
-            this.btxRepository.recordFailed(btxId, ex.getClass().getSimpleName(), ex.getMessage());
-            LOG.log(Level.WARNING, "Command {0} failed for BTX {1}: {2}", new Object[] {
-                commandType, btxId, ex.getMessage()
-            });
+            this.recordFailedSafely(
+                    btxId,
+                    commandType,
+                    ex.getClass().getSimpleName(),
+                    ex.getMessage(),
+                    ex,
+                    "Command {0} failed for BTX {1}",
+                    commandType,
+                    btxId);
             return;
         }
 
         try {
             this.btxRepository.recordCompleted(btxId);
         } catch (Exception ex) {
-            this.logWithThrowable(
-                    Level.WARNING,
+            this.recordFailedSafely(
+                    btxId,
+                    commandType,
+                    ex.getClass().getSimpleName(),
+                    "BTX completion write failure: " + ex.getMessage(),
                     ex,
                     "Failed to mark BTX {0} COMPLETED after successful command {1}; attempting terminal FAILED fallback",
                     btxId,
                     commandType);
-            try {
-                this.btxRepository.recordFailed(btxId, BTX_COMPLETION_WRITE_FAILURE, ex.getMessage());
-            } catch (Exception fallbackEx) {
-                this.logWithThrowable(
-                        Level.WARNING,
-                        fallbackEx,
-                        "Failed to mark BTX {0} FAILED after completion-write failure for command {1}",
-                        btxId,
-                        commandType);
-            }
+        }
+    }
+
+    private void recordFailedSafely(
+            long btxId,
+            String commandType,
+            String errorType,
+            String errorMessage,
+            Throwable throwable,
+            String logMessage,
+            Object... logParameters) {
+        this.logWithThrowable(Level.WARNING, throwable, logMessage, logParameters);
+        try {
+            this.btxRepository.recordFailed(btxId, errorType, errorMessage);
+        } catch (Exception fallbackEx) {
+            this.logWithThrowable(
+                    Level.WARNING,
+                    fallbackEx,
+                    "Failed to persist BTX {0} FAILED state for command {1}",
+                    btxId,
+                    commandType);
         }
     }
 
