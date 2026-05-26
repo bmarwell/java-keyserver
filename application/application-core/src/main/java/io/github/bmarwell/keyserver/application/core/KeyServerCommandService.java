@@ -68,19 +68,27 @@ public class KeyServerCommandService implements CommandService, Serializable {
     @Asynchronous(executor = "java:app/concurrent/KeyServerCommandExecutor")
     @Override
     public <T extends KeyServerCommand> void handleCommand(T keyServerCommand, CommandCallerContext callerContext) {
-        long btxId = tsidFactory.generate().toLong();
+        long btxId = this.tsidFactory.generate().toLong();
         String commandType = keyServerCommand.getClass().getSimpleName();
 
-        btxRepository.recordStarted(btxId, commandType, callerContext.anonymizedCallerIp());
-        btxContext.initialize(btxId);
+        this.btxRepository.recordStarted(btxId, commandType, callerContext.anonymizedCallerIp());
+        this.btxContext.initialize(btxId);
 
         try {
-            dispatcher.dispatch(keyServerCommand, callerContext);
-            btxRepository.recordCompleted(btxId);
+            this.dispatcher.dispatch(keyServerCommand, callerContext);
         } catch (Exception ex) {
-            btxRepository.recordFailed(btxId, ex.getClass().getSimpleName(), ex.getMessage());
+            this.btxRepository.recordFailed(btxId, ex.getClass().getSimpleName(), ex.getMessage());
             LOG.log(Level.WARNING, "Command {0} failed for BTX {1}: {2}", new Object[] {
                 commandType, btxId, ex.getMessage()
+            });
+            return;
+        }
+
+        try {
+            this.btxRepository.recordCompleted(btxId);
+        } catch (Exception ex) {
+            LOG.log(Level.WARNING, "Failed to mark BTX {0} COMPLETED after successful command {1}: {2}", new Object[] {
+                btxId, commandType, ex.getMessage()
             });
         }
     }
