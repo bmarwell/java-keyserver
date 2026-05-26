@@ -18,6 +18,7 @@ import jakarta.enterprise.inject.Default;
 import jakarta.inject.Inject;
 import java.io.Serializable;
 import java.util.logging.Level;
+import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 
 /// Dispatches commands to their handlers inside a dedicated virtual-thread executor.
@@ -92,13 +93,31 @@ public class KeyServerCommandService implements CommandService, Serializable {
         try {
             this.btxRepository.recordCompleted(btxId);
         } catch (Exception ex) {
-            this.btxRepository.recordFailed(btxId, BTX_COMPLETION_WRITE_FAILURE, ex.getMessage());
-            LOG.log(
+            this.logWithThrowable(
                     Level.WARNING,
-                    "Failed to mark BTX " + btxId + " COMPLETED after successful command " + commandType
-                            + "; BTX marked FAILED instead",
-                    ex);
+                    ex,
+                    "Failed to mark BTX {0} COMPLETED after successful command {1}; attempting terminal FAILED fallback",
+                    btxId,
+                    commandType);
+            try {
+                this.btxRepository.recordFailed(btxId, BTX_COMPLETION_WRITE_FAILURE, ex.getMessage());
+            } catch (Exception fallbackEx) {
+                this.logWithThrowable(
+                        Level.WARNING,
+                        fallbackEx,
+                        "Failed to mark BTX {0} FAILED after completion-write failure for command {1}",
+                        btxId,
+                        commandType);
+            }
         }
+    }
+
+    private void logWithThrowable(Level level, Throwable throwable, String message, Object... parameters) {
+        LogRecord logRecord = new LogRecord(level, message);
+        logRecord.setLoggerName(LOG.getName());
+        logRecord.setParameters(parameters);
+        logRecord.setThrown(throwable);
+        LOG.log(logRecord);
     }
 
     // CDI-friendly setters for testing

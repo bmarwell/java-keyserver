@@ -127,9 +127,10 @@ class KeyServerCommandServiceTest {
     }
 
     @Test
-    void ignores_record_completed_failure_after_successful_dispatch() {
+    void records_failed_when_record_completed_throws_after_successful_dispatch() {
         // given
-        // Issue #134: a successful handler plus failing recordCompleted() must not reclassify the BTX as FAILED.
+        // Issue #134: a successful handler plus failing recordCompleted() must still end in a terminal FAILED BTX
+        // state.
         var trackingRepo = new ThrowingOnRecordCompletedRepository();
         var handler = new SuccessCommandHandler();
         KeyServerCommandService service = buildService(trackingRepo, SimpleInstance.of(handler));
@@ -159,6 +160,32 @@ class KeyServerCommandServiceTest {
                 .isEqualTo(KeyServerCommandService.BTX_COMPLETION_WRITE_FAILURE);
     }
 
+    @Test
+    void swallows_record_failed_when_completion_and_fallback_writes_both_throw() {
+        // given
+        // Even if both terminal-state writes fail, the async service must log and swallow rather than propagate.
+        var trackingRepo = new ThrowingOnCompletionAndFailureRepository();
+        var handler = new SuccessCommandHandler();
+        KeyServerCommandService service = buildService(trackingRepo, SimpleInstance.of(handler));
+
+        // when
+        service.handleCommand(new TestCommand(), CommandCallerContext.empty());
+
+        // then
+        assertThat(handler.executeCount)
+                .as("the command handler must already have completed before the BTX completion write fails")
+                .isEqualTo(1);
+        assertThat(trackingRepo.recordCompletedAttemptCount)
+                .as("the service must attempt the normal BTX completion write first")
+                .isEqualTo(1);
+        assertThat(trackingRepo.recordFailedAttemptCount)
+                .as("after the completion write fails, the service must attempt the terminal FAILED fallback")
+                .isEqualTo(1);
+        assertThat(trackingRepo.failedCount)
+                .as("the fallback write never persisted because the repository simulated a second failure")
+                .isZero();
+    }
+
     private static final class SuccessCommandHandler implements CommandHandler<TestCommand> {
         int executeCount;
 
@@ -177,6 +204,7 @@ class KeyServerCommandServiceTest {
     private static class TrackingBusinessTransactionRepository implements BusinessTransactionRepository {
         int startedCount;
         int recordCompletedAttemptCount;
+        int recordFailedAttemptCount;
         int completedCount;
         int failedCount;
 
@@ -201,17 +229,28 @@ class KeyServerCommandServiceTest {
 
         @Override
         public void recordFailed(long btxId, String errorType, @Nullable String errorMessage) {
+            this.recordFailedAttemptCount++;
+            this.beforeMarkingFailed(btxId, errorType, errorMessage);
             this.failedCount++;
             this.lastErrorType = errorType;
         }
 
         protected void beforeMarkingCompleted(long btxId) {}
+
+        protected void beforeMarkingFailed(long btxId, String errorType, @Nullable String errorMessage) {}
     }
 
-    private static final class ThrowingOnRecordCompletedRepository extends TrackingBusinessTransactionRepository {
+    private static class ThrowingOnRecordCompletedRepository extends TrackingBusinessTransactionRepository {
         @Override
         protected void beforeMarkingCompleted(long btxId) {
             throw new IllegalStateException("simulated completion write failure");
+        }
+    }
+
+    private static final class ThrowingOnCompletionAndFailureRepository extends ThrowingOnRecordCompletedRepository {
+        @Override
+        protected void beforeMarkingFailed(long btxId, String errorType, @Nullable String errorMessage) {
+            throw new IllegalStateException("simulated fallback write failure");
         }
     }
 }

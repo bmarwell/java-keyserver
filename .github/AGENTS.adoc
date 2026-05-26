@@ -174,3 +174,4 @@ Every mutating command is wrapped in a BTX lifecycle:
 * Prefer AsciiDoc for repository docs.
 * Keep architecture notes short and current-state focused.
 * Do not spend doc space on version lists or plugin details.
+* When using given/when/then test comments, write them as `// given`, `// when`, `// then`.
