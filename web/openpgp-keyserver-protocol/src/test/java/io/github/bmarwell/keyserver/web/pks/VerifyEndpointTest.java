@@ -26,8 +26,10 @@ class VerifyEndpointTest {
 
     @BeforeEach
     void setUp() {
+        VerifyRenderer renderer = new VerifyRenderer();
+        renderer.setConfiguration(new FreemarkerConfiguration().freemarkerConfiguration());
         this.endpoint = new VerifyEndpoint();
-        this.endpoint.setVerifyRenderer(new VerifyRenderer());
+        this.endpoint.setVerifyRenderer(renderer);
     }
 
     @Test

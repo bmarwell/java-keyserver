@@ -30,9 +30,11 @@ class LookupEndpointIndexTest {
     @BeforeEach
     void setUp() {
         this.fakeService = new FakeKeyRepositoryService();
+        HkpIndexRenderer renderer = new HkpIndexRenderer();
+        renderer.setConfiguration(new FreemarkerConfiguration().freemarkerConfiguration());
         this.endpoint = new LookupEndpoint();
         this.endpoint.setKeyRepositoryService(this.fakeService);
-        this.endpoint.setHkpIndexRenderer(new HkpIndexRenderer());
+        this.endpoint.setHkpIndexRenderer(renderer);
     }
 
     @Test
