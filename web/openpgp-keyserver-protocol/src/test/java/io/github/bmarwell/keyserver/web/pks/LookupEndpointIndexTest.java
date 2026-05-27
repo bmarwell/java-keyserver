@@ -169,6 +169,29 @@ class LookupEndpointIndexTest {
         assertThat(body)
                 .as("HTML body must contain the fingerprint so users can identify the key")
                 .contains(FINGERPRINT);
+        assertThat(body)
+                .as("HTML must include DOCTYPE and charset meta so browsers render it in standards mode with UTF-8")
+                .startsWith("<!DOCTYPE html>");
+        assertThat(body).contains("<meta charset=\"utf-8\">");
+    }
+
+    @Test
+    void recognisesMrTokenAmongCommaDelimitedOptions() {
+        // given — options contains 'mr' alongside another token
+        UidIndexEntry uid = new UidIndexEntry(UID_RAW, Optional.of(CREATION), Optional.empty(), false);
+        KeyIndexResult key = new KeyIndexResult(
+                FINGERPRINT, 22, Optional.empty(), CREATION, Optional.empty(), false, false, List.of(uid));
+        this.fakeService.indexResults = List.of(key);
+
+        // when — client sends options=nm,mr (comma-separated list)
+        Response response = this.endpoint.doLookup("index", "alice@example.com", null, "nm,mr");
+        String body = (String) response.getEntity();
+
+        // then — machine-readable format must be returned because 'mr' is in the options list
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(body)
+                .as("'mr' token in a comma-separated options list must trigger machine-readable output")
+                .startsWith("info:1:");
     }
 
     @Test

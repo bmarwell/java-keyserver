@@ -12,6 +12,7 @@ import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Response;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
@@ -59,7 +60,8 @@ public class LookupEndpoint {
         }
 
         if ("index".equalsIgnoreCase(op)) {
-            boolean machineReadable = options != null && options.contains("mr");
+            boolean machineReadable = options != null
+                    && Arrays.stream(options.split(",")).map(String::strip).anyMatch("mr"::equalsIgnoreCase);
             return handleIndex(search, exactMatch, machineReadable);
         }
 
