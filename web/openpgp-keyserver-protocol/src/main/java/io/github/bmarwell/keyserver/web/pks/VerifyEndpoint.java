@@ -60,17 +60,17 @@ public class VerifyEndpoint {
     public Response verify(@PathParam("token") String token) {
         try {
             VerificationResult result = this.verificationService.verifyUid(token);
-            return Response.ok(this.verifyRenderer.renderSuccess(result), "text/html;charset=utf-8")
+            return Response.ok(this.verifyRenderer.renderSuccess(result), "text/html; charset=utf-8")
                     .build();
         } catch (TokenExpiredException e) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(this.verifyRenderer.renderExpired())
-                    .type("text/html;charset=utf-8")
+                    .type("text/html; charset=utf-8")
                     .build();
         } catch (TokenInvalidException e) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(this.verifyRenderer.renderInvalid())
-                    .type("text/html;charset=utf-8")
+                    .type("text/html; charset=utf-8")
                     .build();
         }
     }
