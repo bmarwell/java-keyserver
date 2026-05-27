@@ -18,7 +18,9 @@ import jakarta.enterprise.inject.Default;
 import jakarta.inject.Inject;
 import java.io.Serializable;
 import java.util.logging.Level;
+import java.util.logging.LogRecord;
 import java.util.logging.Logger;
+import org.jspecify.annotations.Nullable;
 
 /// Dispatches commands to their handlers inside a dedicated virtual-thread executor.
 ///
@@ -39,18 +41,21 @@ import java.util.logging.Logger;
 /// 3. The BTX ID is stored in the `@RequestScoped` `BusinessTransactionContext`
 ///    so that any downstream component (audit writer, DAO) can reference it
 ///    without explicit parameter passing.
+///    If either step 2 or 3 fails, the error is logged and the command is not dispatched.
 /// 4. The command handler runs inside a `@Transactional` boundary provided by
 ///    the injected {@link TransactionalCommandDispatcher}.  Using a separate
 ///    bean ensures CDI interceptors fire through the proxy rather than being
 ///    bypassed by a same-bean self-invocation.
 /// 5. On success the BTX row is updated to `COMPLETED` (also `REQUIRES_NEW`).
-/// 6. On any exception the BTX row is updated to `FAILED` (`REQUIRES_NEW`) and
+/// 6. If the completion write itself fails after a successful handler, the service
+///    falls back to marking the BTX row `FAILED` with the original exception type
+///    and a prefixed audit message so the row still reaches a terminal state.
+/// 7. On any exception the BTX row is updated to `FAILED` (`REQUIRES_NEW`) and
 ///    the exception is logged.  It does NOT propagate back — the caller fired and forgot.
 @ManagedExecutorDefinition(name = "java:app/concurrent/KeyServerCommandExecutor", virtual = true, maxAsync = -1)
 @Default
 @ApplicationScoped
 public class KeyServerCommandService implements CommandService, Serializable {
-
     private static final Logger LOG = Logger.getLogger(KeyServerCommandService.class.getName());
 
     @Inject
@@ -68,21 +73,89 @@ public class KeyServerCommandService implements CommandService, Serializable {
     @Asynchronous(executor = "java:app/concurrent/KeyServerCommandExecutor")
     @Override
     public <T extends KeyServerCommand> void handleCommand(T keyServerCommand, CommandCallerContext callerContext) {
-        long btxId = tsidFactory.generate().toLong();
+        long btxId = this.tsidFactory.generate().toLong();
         String commandType = keyServerCommand.getClass().getSimpleName();
-
-        btxRepository.recordStarted(btxId, commandType, callerContext.anonymizedCallerIp());
-        btxContext.initialize(btxId);
+        boolean startedRecorded = false;
+        boolean dispatchedSuccessfully = false;
 
         try {
-            dispatcher.dispatch(keyServerCommand, callerContext);
-            btxRepository.recordCompleted(btxId);
+            this.btxRepository.recordStarted(btxId, commandType, callerContext.anonymizedCallerIp());
+            startedRecorded = true;
+            this.btxContext.initialize(btxId);
+            this.dispatcher.dispatch(keyServerCommand, callerContext);
+            dispatchedSuccessfully = true;
         } catch (Exception ex) {
-            btxRepository.recordFailed(btxId, ex.getClass().getSimpleName(), ex.getMessage());
-            LOG.log(Level.WARNING, "Command {0} failed for BTX {1}: {2}", new Object[] {
-                commandType, btxId, ex.getMessage()
-            });
+            if (!startedRecorded) {
+                this.logWithThrowable(
+                        Level.WARNING,
+                        ex,
+                        "Failed to record STARTED BTX {0} for command {1}; command not dispatched",
+                        btxId,
+                        commandType);
+                return;
+            }
+            this.recordFailedSafely(
+                    btxId,
+                    commandType,
+                    ex.getClass().getSimpleName(),
+                    ex.getMessage(),
+                    ex,
+                    "Failed to prepare or dispatch command {0} for BTX {1}",
+                    commandType,
+                    btxId);
+        } finally {
+            if (dispatchedSuccessfully) {
+                try {
+                    this.btxRepository.recordCompleted(btxId);
+                } catch (Exception ex) {
+                    this.recordFailedSafely(
+                            btxId,
+                            commandType,
+                            ex.getClass().getSimpleName(),
+                            this.toCompletionWriteFailureMessage(ex.getMessage()),
+                            ex,
+                            "Failed to mark BTX {0} COMPLETED after successful command {1}; attempting terminal FAILED fallback",
+                            btxId,
+                            commandType);
+                }
+            }
         }
+    }
+
+    private String toCompletionWriteFailureMessage(@Nullable String errorMessage) {
+        if (errorMessage == null) {
+            return "BTX completion write failure";
+        }
+        return "BTX completion write failure: " + errorMessage;
+    }
+
+    private void recordFailedSafely(
+            long btxId,
+            String commandType,
+            String errorType,
+            @Nullable String errorMessage,
+            Throwable throwable,
+            String logMessage,
+            Object... logParameters) {
+        this.logWithThrowable(Level.WARNING, throwable, logMessage, logParameters);
+        try {
+            this.btxRepository.recordFailed(btxId, errorType, errorMessage);
+        } catch (Exception fallbackEx) {
+            this.logWithThrowable(
+                    Level.WARNING,
+                    fallbackEx,
+                    "Failed to persist BTX {0} FAILED state for command {1}",
+                    btxId,
+                    commandType);
+        }
+    }
+
+    private void logWithThrowable(Level level, Throwable throwable, String message, Object... parameters) {
+        LogRecord logRecord = new LogRecord(level, message);
+        logRecord.setLoggerName(LOG.getName());
+        logRecord.setParameters(parameters);
+        logRecord.setThrown(throwable);
+        LOG.log(logRecord);
     }
 
     // CDI-friendly setters for testing
