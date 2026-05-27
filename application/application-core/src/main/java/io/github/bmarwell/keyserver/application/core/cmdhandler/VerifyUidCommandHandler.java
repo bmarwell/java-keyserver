@@ -14,6 +14,8 @@ import io.github.bmarwell.keyserver.application.api.ex.TokenInvalidException;
 import io.github.bmarwell.keyserver.application.core.cmdhandler.verification.CommandVerificationRegistry;
 import io.github.bmarwell.keyserver.application.core.cmdhandler.verification.NoCommandVerification;
 import io.github.bmarwell.keyserver.application.core.cmdhandler.verification.NoOpCommandVerificationRegistry;
+import io.github.bmarwell.keyserver.application.core.concurrent.BusinessTransactionContext;
+import io.github.bmarwell.keyserver.application.port.repository.BusinessTransactionRepository;
 import io.github.bmarwell.keyserver.application.port.repository.KeyRepository;
 import io.github.bmarwell.keyserver.application.port.repository.VerificationQueueRepository;
 import io.github.bmarwell.keyserver.application.port.repository.VerificationQueueRepository.VerificationEntry;
@@ -53,6 +55,12 @@ public class VerifyUidCommandHandler extends AbstractKeyServerCommandHandler<Ver
     @Inject
     KeyRepository keyRepository;
 
+    @Inject
+    BusinessTransactionRepository btxRepository;
+
+    @Inject
+    BusinessTransactionContext btxContext;
+
     @Override
     public <C extends KeyServerCommand> boolean canHandle(C command) {
         return command instanceof VerifyUidCommand;
@@ -82,6 +90,7 @@ public class VerifyUidCommandHandler extends AbstractKeyServerCommandHandler<Ver
         }
 
         this.verificationQueueRepository.markVerified(tokenId);
+        this.btxRepository.recordFingerprint(this.btxContext.getBtxId(), entry.fingerprint());
         this.keyRepository.publishVerifiedUid(
                 entry.fingerprint(), entry.uidRaw(), entry.uidEmail(), entry.armoredKey());
 
@@ -105,5 +114,13 @@ public class VerifyUidCommandHandler extends AbstractKeyServerCommandHandler<Ver
 
     public void setKeyRepository(KeyRepository keyRepository) {
         this.keyRepository = keyRepository;
+    }
+
+    public void setBtxRepository(BusinessTransactionRepository btxRepository) {
+        this.btxRepository = btxRepository;
+    }
+
+    public void setBtxContext(BusinessTransactionContext btxContext) {
+        this.btxContext = btxContext;
     }
 }

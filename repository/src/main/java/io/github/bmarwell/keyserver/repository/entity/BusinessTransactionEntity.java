@@ -87,6 +87,10 @@ public class BusinessTransactionEntity {
         return entity;
     }
 
+    public void markFingerprintSet(String fingerprint) {
+        this.fingerprint = fingerprint;
+    }
+
     public void markCompleted() {
         this.state = BusinessTransactionState.COMPLETED;
         this.completedAt = OffsetDateTime.now();

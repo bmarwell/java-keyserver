@@ -319,6 +319,11 @@ class KeyServerCommandServiceTest {
         }
 
         @Override
+        public void recordFingerprint(long btxId, String fingerprint) {
+            // no-op tracking; fingerprint recording is tested in handler tests
+        }
+
+        @Override
         public void recordCompleted(long btxId) {
             this.recordCompletedAttemptCount++;
             this.beforeMarkingCompleted(btxId);

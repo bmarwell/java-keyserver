@@ -11,7 +11,9 @@ import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommand;
 import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommandResponse;
 import io.github.bmarwell.keyserver.application.core.cmdhandler.verification.CommandVerificationRegistry;
 import io.github.bmarwell.keyserver.application.core.cmdhandler.verification.KeySubmissionVerifier;
+import io.github.bmarwell.keyserver.application.core.concurrent.BusinessTransactionContext;
 import io.github.bmarwell.keyserver.application.port.notification.VerificationNotificationPort;
+import io.github.bmarwell.keyserver.application.port.repository.BusinessTransactionRepository;
 import io.github.bmarwell.keyserver.application.port.repository.VerificationQueueRepository;
 import io.github.bmarwell.keyserver.application.port.repository.VerificationQueueRepository.VerificationRequest;
 import jakarta.enterprise.context.RequestScoped;
@@ -75,6 +77,12 @@ public class AddKeyToVerificationQueueCommandHandler
     VerificationNotificationPort notificationPort;
 
     @Inject
+    BusinessTransactionRepository btxRepository;
+
+    @Inject
+    BusinessTransactionContext btxContext;
+
+    @Inject
     @ConfigProperty(name = MAX_KEY_BYTES_CONFIG_KEY, defaultValue = "" + DEFAULT_MAX_KEY_BYTES)
     int maxKeyBytes;
 
@@ -101,6 +109,12 @@ public class AddKeyToVerificationQueueCommandHandler
             AddKeyToVerificationQueueCommand command,
             KeySubmissionVerifier.VerifiedKeySubmission verification,
             CommandCallerContext callerContext) {
+        // All identities share the same primary key fingerprint; record it once.
+        if (!verification.verifiedIdentities().isEmpty()) {
+            this.btxRepository.recordFingerprint(
+                    this.btxContext.getBtxId(),
+                    verification.verifiedIdentities().getFirst().fingerprint());
+        }
         this.enqueueVerificationRequests(verification);
 
         return KeyServerCommandResponse.success();
@@ -137,6 +151,14 @@ public class AddKeyToVerificationQueueCommandHandler
 
     public void setNotificationPort(VerificationNotificationPort notificationPort) {
         this.notificationPort = notificationPort;
+    }
+
+    public void setBtxRepository(BusinessTransactionRepository btxRepository) {
+        this.btxRepository = btxRepository;
+    }
+
+    public void setBtxContext(BusinessTransactionContext btxContext) {
+        this.btxContext = btxContext;
     }
 
     void setKeySubmissionVerifier(

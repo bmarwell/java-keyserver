@@ -33,6 +33,16 @@ public class PersistentBusinessTransactionRepository extends BaseRepository impl
 
     @Override
     @Transactional(Transactional.TxType.REQUIRES_NEW)
+    public void recordFingerprint(long btxId, String fingerprint) {
+        BusinessTransactionEntity entity = getEntityManager().find(BusinessTransactionEntity.class, btxId);
+        if (entity != null) {
+            entity.markFingerprintSet(fingerprint);
+        }
+        LOG.log(Level.FINE, "BTX {0} fingerprint set [{1}]", new Object[] {btxId, fingerprint});
+    }
+
+    @Override
+    @Transactional(Transactional.TxType.REQUIRES_NEW)
     public void recordCompleted(long btxId) {
         BusinessTransactionEntity entity = getEntityManager().find(BusinessTransactionEntity.class, btxId);
         if (entity != null) {
