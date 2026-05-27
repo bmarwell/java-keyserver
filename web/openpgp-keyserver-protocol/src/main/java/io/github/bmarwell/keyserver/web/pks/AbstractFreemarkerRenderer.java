@@ -30,7 +30,9 @@ abstract class AbstractFreemarkerRenderer {
     ///                     (e.g. {@code "verify-success.ftlh"})
     /// @param model        variables made available inside the template
     /// @return rendered output as a string
-    /// @throws IllegalStateException if the template cannot be found or rendering fails
+    /// @throws TemplateRenderingException if the template cannot be found or rendering fails;
+    ///         caught by {@link TemplateRenderingExceptionMapper}, which logs the detail and
+    ///         returns a 500 response
     protected String processTemplate(String templateName, Map<String, Object> model) {
         try {
             Template template = this.configuration.getTemplate(templateName);
@@ -38,7 +40,7 @@ abstract class AbstractFreemarkerRenderer {
             template.process(model, writer);
             return writer.toString();
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to render template: " + templateName, e);
+            throw new TemplateRenderingException(templateName, e);
         }
     }
 

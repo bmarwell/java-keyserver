@@ -30,9 +30,10 @@ import jakarta.enterprise.inject.Produces;
 ///       must pre-encode all values before passing them to the model.</li>
 /// </ul>
 ///
-/// Exceptions thrown during template processing propagate as {@link RuntimeException}
-/// (via {@link TemplateExceptionHandler#RETHROW_HANDLER}), which JAX-RS maps to a
-/// 500 response via the existing {@link KeyServerExceptionMapper}.
+/// Exceptions thrown during template processing propagate as {@link TemplateRenderingException}
+/// (via {@link TemplateExceptionHandler#RETHROW_HANDLER}), which is caught by
+/// {@link TemplateRenderingExceptionMapper}.  That mapper logs the failure at
+/// {@link java.util.logging.Level#SEVERE} and returns a generic 500 HTML response.
 @ApplicationScoped
 public class FreemarkerConfiguration {
 
