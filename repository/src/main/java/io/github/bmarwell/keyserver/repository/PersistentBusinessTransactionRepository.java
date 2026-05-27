@@ -37,8 +37,12 @@ public class PersistentBusinessTransactionRepository extends BaseRepository impl
         BusinessTransactionEntity entity = getEntityManager().find(BusinessTransactionEntity.class, btxId);
         if (entity != null) {
             entity.markFingerprintSet(fingerprint);
+            LOG.log(Level.FINE, "BTX {0} fingerprint set [{1}]", new Object[] {btxId, fingerprint});
+        } else {
+            LOG.log(Level.WARNING, "BTX {0} not found when recording fingerprint [{1}]", new Object[] {
+                btxId, fingerprint
+            });
         }
-        LOG.log(Level.FINE, "BTX {0} fingerprint set [{1}]", new Object[] {btxId, fingerprint});
     }
 
     @Override

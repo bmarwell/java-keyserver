@@ -115,10 +115,6 @@ public class BusinessTransactionEntity {
         return Optional.ofNullable(fingerprint);
     }
 
-    public void setFingerprint(String fingerprint) {
-        this.fingerprint = fingerprint;
-    }
-
     public Optional<String> getCallerIp() {
         return Optional.ofNullable(callerIp);
     }
