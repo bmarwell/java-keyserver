@@ -20,6 +20,7 @@ import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
 import java.net.URI;
 import java.time.OffsetDateTime;
+import java.util.List;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 /// Handles the {@link AddKeyToVerificationQueueCommand}.
@@ -109,11 +110,15 @@ public class AddKeyToVerificationQueueCommandHandler
             AddKeyToVerificationQueueCommand command,
             KeySubmissionVerifier.VerifiedKeySubmission verification,
             CommandCallerContext callerContext) {
-        // All identities share the same primary key fingerprint; record it once.
-        if (!verification.verifiedIdentities().isEmpty()) {
-            this.btxRepository.recordFingerprint(
-                    this.btxContext.getBtxId(),
-                    verification.verifiedIdentities().getFirst().fingerprint());
+        // Record the fingerprint on the BTX row when all identities share the same primary key.
+        // If identities from multiple distinct keys were submitted we skip fingerprint recording;
+        // picking the first arbitrarily would make the BTX row misleading.
+        List<String> distinctFingerprints = verification.verifiedIdentities().stream()
+                .map(KeySubmissionVerifier.VerifiedKeyIdentity::fingerprint)
+                .distinct()
+                .toList();
+        if (distinctFingerprints.size() == 1) {
+            this.btxRepository.recordFingerprint(this.btxContext.getBtxId(), distinctFingerprints.getFirst());
         }
         this.enqueueVerificationRequests(verification);
 

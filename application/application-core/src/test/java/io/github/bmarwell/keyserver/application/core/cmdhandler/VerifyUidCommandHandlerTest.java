@@ -179,6 +179,25 @@ class VerifyUidCommandHandlerTest {
     // -----------------------------------------------------------------------
 
     @Test
+    void scenario2_expired_token_still_records_fingerprint_on_btx_row() {
+        // given
+        // Even for expired tokens, the BTX row should carry the fingerprint so operators can
+        // correlate failed/expired verification attempts with a specific key in the audit log.
+        this.fakeQueue.put(TOKEN_1, expiredEntry(TOKEN_1, "Alice <alice@example.com>", "alice@example.com"));
+
+        // when
+        assertThatThrownBy(() -> this.handler.execute(
+                        new VerifyUidCommand(Long.toUnsignedString(TOKEN_1)), CommandCallerContext.empty()))
+                .isInstanceOf(TokenExpiredException.class);
+
+        // then
+        assertThat(this.fakeBtxRepo.recordedFingerprint)
+                .as(
+                        "fingerprint must be recorded before the expiry check so expired-token BTX rows are filterable by key")
+                .isEqualTo(FINGERPRINT);
+    }
+
+    @Test
     void scenario2_expired_token_throws_TokenExpiredException() {
         fakeQueue.put(TOKEN_1, expiredEntry(TOKEN_1, "Alice <alice@example.com>", "alice@example.com"));
 

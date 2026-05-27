@@ -85,12 +85,15 @@ public class VerifyUidCommandHandler extends AbstractKeyServerCommandHandler<Ver
                         // injection if a caller passes an extremely long or control-char-bearing string.
                         "Verification token not found or already consumed"));
 
+        // Record the fingerprint as soon as we know it, before any further checks.
+        // This ensures the BTX audit row is populated even when the token is expired.
+        this.btxRepository.recordFingerprint(this.btxContext.getBtxId(), entry.fingerprint());
+
         if (entry.expiresAt().isBefore(OffsetDateTime.now())) {
             throw new TokenExpiredException("Verification token has expired for fingerprint " + entry.fingerprint());
         }
 
         this.verificationQueueRepository.markVerified(tokenId);
-        this.btxRepository.recordFingerprint(this.btxContext.getBtxId(), entry.fingerprint());
         this.keyRepository.publishVerifiedUid(
                 entry.fingerprint(), entry.uidRaw(), entry.uidEmail(), entry.armoredKey());
 
