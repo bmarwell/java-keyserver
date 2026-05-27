@@ -12,7 +12,9 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import io.github.bmarwell.keyserver.application.api.commands.AddKeyToVerificationQueueCommand;
 import io.github.bmarwell.keyserver.application.api.commands.CommandCallerContext;
 import io.github.bmarwell.keyserver.application.api.ex.KeyParsingException;
+import io.github.bmarwell.keyserver.application.core.concurrent.BusinessTransactionContext;
 import io.github.bmarwell.keyserver.application.port.notification.VerificationNotificationPort;
+import io.github.bmarwell.keyserver.application.port.repository.BusinessTransactionRepository;
 import io.github.bmarwell.keyserver.application.port.repository.VerificationQueueRepository;
 import io.github.bmarwell.keyserver.application.port.repository.VerificationQueueRepository.VerificationRequest;
 import java.io.IOException;
@@ -22,12 +24,33 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 class AddKeyToVerificationQueueCommandHandlerTest {
 
-    /** Fake repository that records every enqueue call and returns sequential IDs. */
+    /** Fake BTX repository that records fingerprint writes. */
+    static class FakeBusinessTransactionRepository implements BusinessTransactionRepository {
+        @Nullable
+        String recordedFingerprint;
+
+        @Override
+        public void recordStarted(long btxId, String commandType, @Nullable String callerIp) {}
+
+        @Override
+        public void recordFingerprint(long btxId, String fingerprint) {
+            this.recordedFingerprint = fingerprint;
+        }
+
+        @Override
+        public void recordCompleted(long btxId) {}
+
+        @Override
+        public void recordFailed(long btxId, String errorType, @Nullable String errorMessage) {}
+    }
+
+    /** Fake verification-queue repository that records every enqueue call and returns sequential IDs. */
     static class FakeVerificationQueueRepository implements VerificationQueueRepository {
         final List<VerificationRequest> received = new ArrayList<>();
         private final AtomicLong counter = new AtomicLong(1_000L);
@@ -61,15 +84,21 @@ class AddKeyToVerificationQueueCommandHandlerTest {
 
     FakeVerificationQueueRepository fakeRepo;
     FakeNotificationPort fakeNotification;
+    FakeBusinessTransactionRepository fakeBtxRepo;
     AddKeyToVerificationQueueCommandHandler handler;
 
     @BeforeEach
     void setUp() {
         this.fakeRepo = new FakeVerificationQueueRepository();
         this.fakeNotification = new FakeNotificationPort();
+        this.fakeBtxRepo = new FakeBusinessTransactionRepository();
+        var btxContext = new BusinessTransactionContext();
+        btxContext.initialize(42L);
         this.handler = new AddKeyToVerificationQueueCommandHandler();
         this.handler.setVerificationQueueRepository(this.fakeRepo);
         this.handler.setNotificationPort(this.fakeNotification);
+        this.handler.setBtxRepository(this.fakeBtxRepo);
+        this.handler.setBtxContext(btxContext);
     }
 
     private String loadTestKey(String resourceName) throws IOException {
@@ -79,6 +108,23 @@ class AddKeyToVerificationQueueCommandHandlerTest {
                     .isNotNull();
             return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
         }
+    }
+
+    @Test
+    void happy_path_records_fingerprint_on_btx_row() throws IOException {
+        // given
+        // The fingerprint column allows operators to filter the BTX audit log by key; it must be set
+        // by the handler once the key is parsed and verified, so it survives even if later steps fail.
+        String keyText = loadTestKey("test-key-with-email.asc");
+        var command = new AddKeyToVerificationQueueCommand(keyText);
+
+        // when
+        this.handler.execute(command, CommandCallerContext.empty());
+
+        // then
+        assertThat(this.fakeBtxRepo.recordedFingerprint)
+                .as("the handler must write the primary key fingerprint to the BTX audit row")
+                .isNotBlank();
     }
 
     @Test

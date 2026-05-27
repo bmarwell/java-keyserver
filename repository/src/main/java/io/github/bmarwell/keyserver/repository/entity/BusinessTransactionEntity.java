@@ -87,6 +87,10 @@ public class BusinessTransactionEntity {
         return entity;
     }
 
+    public void markFingerprintSet(String fingerprint) {
+        this.fingerprint = fingerprint;
+    }
+
     public void markCompleted() {
         this.state = BusinessTransactionState.COMPLETED;
         this.completedAt = OffsetDateTime.now();
@@ -109,10 +113,6 @@ public class BusinessTransactionEntity {
 
     public Optional<String> getFingerprint() {
         return Optional.ofNullable(fingerprint);
-    }
-
-    public void setFingerprint(String fingerprint) {
-        this.fingerprint = fingerprint;
     }
 
     public Optional<String> getCallerIp() {

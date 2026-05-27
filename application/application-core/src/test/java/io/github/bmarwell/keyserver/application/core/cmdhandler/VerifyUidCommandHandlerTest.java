@@ -12,6 +12,8 @@ import io.github.bmarwell.keyserver.application.api.commands.CommandCallerContex
 import io.github.bmarwell.keyserver.application.api.commands.VerifyUidCommand;
 import io.github.bmarwell.keyserver.application.api.ex.TokenExpiredException;
 import io.github.bmarwell.keyserver.application.api.ex.TokenInvalidException;
+import io.github.bmarwell.keyserver.application.core.concurrent.BusinessTransactionContext;
+import io.github.bmarwell.keyserver.application.port.repository.BusinessTransactionRepository;
 import io.github.bmarwell.keyserver.application.port.repository.KeyRepository;
 import io.github.bmarwell.keyserver.application.port.repository.VerificationQueueRepository;
 import io.github.bmarwell.keyserver.application.port.repository.VerificationQueueRepository.VerificationEntry;
@@ -25,6 +27,7 @@ import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -102,6 +105,26 @@ class VerifyUidCommandHandlerTest {
         }
     }
 
+    /** Fake BTX repository that records fingerprint writes. */
+    static class FakeBusinessTransactionRepository implements BusinessTransactionRepository {
+        @Nullable
+        String recordedFingerprint;
+
+        @Override
+        public void recordStarted(long btxId, String commandType, @Nullable String callerIp) {}
+
+        @Override
+        public void recordFingerprint(long btxId, String fingerprint) {
+            this.recordedFingerprint = fingerprint;
+        }
+
+        @Override
+        public void recordCompleted(long btxId) {}
+
+        @Override
+        public void recordFailed(long btxId, String errorType, @Nullable String errorMessage) {}
+    }
+
     // -----------------------------------------------------------------------
     // Fixture helpers
     // -----------------------------------------------------------------------
@@ -134,20 +157,45 @@ class VerifyUidCommandHandlerTest {
 
     FakeVerificationQueueRepository fakeQueue;
     FakeKeyRepository fakeKeys;
+    FakeBusinessTransactionRepository fakeBtxRepo;
     VerifyUidCommandHandler handler;
 
     @BeforeEach
     void setUp() {
-        fakeQueue = new FakeVerificationQueueRepository();
-        fakeKeys = new FakeKeyRepository();
-        handler = new VerifyUidCommandHandler();
-        handler.setVerificationQueueRepository(fakeQueue);
-        handler.setKeyRepository(fakeKeys);
+        this.fakeQueue = new FakeVerificationQueueRepository();
+        this.fakeKeys = new FakeKeyRepository();
+        this.fakeBtxRepo = new FakeBusinessTransactionRepository();
+        var btxContext = new BusinessTransactionContext();
+        btxContext.initialize(42L);
+        this.handler = new VerifyUidCommandHandler();
+        this.handler.setVerificationQueueRepository(this.fakeQueue);
+        this.handler.setKeyRepository(this.fakeKeys);
+        this.handler.setBtxRepository(this.fakeBtxRepo);
+        this.handler.setBtxContext(btxContext);
     }
 
     // -----------------------------------------------------------------------
     // Scenario 2: one email address, token times out → key never published
     // -----------------------------------------------------------------------
+
+    @Test
+    void scenario2_expired_token_still_records_fingerprint_on_btx_row() {
+        // given
+        // Even for expired tokens, the BTX row should carry the fingerprint so operators can
+        // correlate failed/expired verification attempts with a specific key in the audit log.
+        this.fakeQueue.put(TOKEN_1, expiredEntry(TOKEN_1, "Alice <alice@example.com>", "alice@example.com"));
+
+        // when
+        assertThatThrownBy(() -> this.handler.execute(
+                        new VerifyUidCommand(Long.toUnsignedString(TOKEN_1)), CommandCallerContext.empty()))
+                .isInstanceOf(TokenExpiredException.class);
+
+        // then
+        assertThat(this.fakeBtxRepo.recordedFingerprint)
+                .as(
+                        "fingerprint must be recorded before the expiry check so expired-token BTX rows are filterable by key")
+                .isEqualTo(FINGERPRINT);
+    }
 
     @Test
     void scenario2_expired_token_throws_TokenExpiredException() {
@@ -164,6 +212,22 @@ class VerifyUidCommandHandlerTest {
     // -----------------------------------------------------------------------
     // Scenario 3: one email address, link clicked → key published
     // -----------------------------------------------------------------------
+
+    @Test
+    void scenario3_records_fingerprint_on_btx_row() {
+        // given
+        // The fingerprint column lets operators filter the BTX audit log by key; the handler must
+        // write it once the verification-queue entry (which already carries the fingerprint) is loaded.
+        this.fakeQueue.put(TOKEN_1, pendingEntry(TOKEN_1, "Alice <alice@example.com>", "alice@example.com"));
+
+        // when
+        this.handler.execute(new VerifyUidCommand(Long.toUnsignedString(TOKEN_1)), CommandCallerContext.empty());
+
+        // then
+        assertThat(this.fakeBtxRepo.recordedFingerprint)
+                .as("the handler must write the key fingerprint to the BTX audit row after loading the queue entry")
+                .isEqualTo(FINGERPRINT);
+    }
 
     @Test
     void scenario3_single_email_clicked_publishes_key() {

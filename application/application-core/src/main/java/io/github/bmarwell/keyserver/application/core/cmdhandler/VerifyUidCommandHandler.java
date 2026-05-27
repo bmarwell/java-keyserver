@@ -14,6 +14,8 @@ import io.github.bmarwell.keyserver.application.api.ex.TokenInvalidException;
 import io.github.bmarwell.keyserver.application.core.cmdhandler.verification.CommandVerificationRegistry;
 import io.github.bmarwell.keyserver.application.core.cmdhandler.verification.NoCommandVerification;
 import io.github.bmarwell.keyserver.application.core.cmdhandler.verification.NoOpCommandVerificationRegistry;
+import io.github.bmarwell.keyserver.application.core.concurrent.BusinessTransactionContext;
+import io.github.bmarwell.keyserver.application.port.repository.BusinessTransactionRepository;
 import io.github.bmarwell.keyserver.application.port.repository.KeyRepository;
 import io.github.bmarwell.keyserver.application.port.repository.VerificationQueueRepository;
 import io.github.bmarwell.keyserver.application.port.repository.VerificationQueueRepository.VerificationEntry;
@@ -53,6 +55,12 @@ public class VerifyUidCommandHandler extends AbstractKeyServerCommandHandler<Ver
     @Inject
     KeyRepository keyRepository;
 
+    @Inject
+    BusinessTransactionRepository btxRepository;
+
+    @Inject
+    BusinessTransactionContext btxContext;
+
     @Override
     public <C extends KeyServerCommand> boolean canHandle(C command) {
         return command instanceof VerifyUidCommand;
@@ -76,6 +84,10 @@ public class VerifyUidCommandHandler extends AbstractKeyServerCommandHandler<Ver
                         // would: (a) expose a credential-like value in logs, and (b) enable log
                         // injection if a caller passes an extremely long or control-char-bearing string.
                         "Verification token not found or already consumed"));
+
+        // Record the fingerprint as soon as we know it, before any further checks.
+        // This ensures the BTX audit row is populated even when the token is expired.
+        this.btxRepository.recordFingerprint(this.btxContext.getBtxId(), entry.fingerprint());
 
         if (entry.expiresAt().isBefore(OffsetDateTime.now())) {
             throw new TokenExpiredException("Verification token has expired for fingerprint " + entry.fingerprint());
@@ -105,5 +117,13 @@ public class VerifyUidCommandHandler extends AbstractKeyServerCommandHandler<Ver
 
     public void setKeyRepository(KeyRepository keyRepository) {
         this.keyRepository = keyRepository;
+    }
+
+    public void setBtxRepository(BusinessTransactionRepository btxRepository) {
+        this.btxRepository = btxRepository;
+    }
+
+    public void setBtxContext(BusinessTransactionContext btxContext) {
+        this.btxContext = btxContext;
     }
 }

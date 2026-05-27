@@ -22,6 +22,16 @@ public interface BusinessTransactionRepository {
     /// @param callerIp    remote address of the HTTP client, or `null`
     void recordStarted(long btxId, String commandType, @Nullable String callerIp);
 
+    /// Associates a key fingerprint with an existing BTX row.
+    ///
+    /// Called by command handlers once the fingerprint is known (after parsing or
+    /// loading the key).  Uses `REQUIRES_NEW` so the update commits independently
+    /// of the handler's own JTA transaction.
+    ///
+    /// @param btxId       TSID of the BTX row created by {@link #recordStarted}
+    /// @param fingerprint hex fingerprint of the primary key
+    void recordFingerprint(long btxId, String fingerprint);
+
     /// Updates the row to state `COMPLETED` and sets `completed_at`.
     void recordCompleted(long btxId);
 
