@@ -53,8 +53,8 @@ class LookupEndpointIndexTest {
     void rendersMachineReadableInfoLineWithKeyCount() {
         // given — one key with one verified UID in the repository
         UidIndexEntry uid = new UidIndexEntry(UID_RAW, Optional.of(CREATION), Optional.empty(), false);
-        KeyIndexResult key =
-                new KeyIndexResult(FINGERPRINT, 22, Optional.empty(), CREATION, Optional.empty(), false, List.of(uid));
+        KeyIndexResult key = new KeyIndexResult(
+                FINGERPRINT, 22, Optional.empty(), CREATION, Optional.empty(), false, false, List.of(uid));
         this.fakeService.indexResults = List.of(key);
 
         // when — the client sends op=index&options=mr (machine-readable)
@@ -72,8 +72,8 @@ class LookupEndpointIndexTest {
     void rendersMachineReadablePubLine() {
         // given — one RSA-2048 key (algorithm 1, bitStrength 2048) with a known creation time
         UidIndexEntry uid = new UidIndexEntry(UID_RAW, Optional.of(CREATION), Optional.empty(), false);
-        KeyIndexResult key =
-                new KeyIndexResult(FINGERPRINT, 1, Optional.of(2048), CREATION, Optional.empty(), false, List.of(uid));
+        KeyIndexResult key = new KeyIndexResult(
+                FINGERPRINT, 1, Optional.of(2048), CREATION, Optional.empty(), false, false, List.of(uid));
         this.fakeService.indexResults = List.of(key);
 
         // when — client requests machine-readable index
@@ -91,8 +91,8 @@ class LookupEndpointIndexTest {
     void rendersMachineReadableUidLinePercentEncoded() {
         // given — a UID string containing characters that need percent-encoding ('<', '>', ' ')
         UidIndexEntry uid = new UidIndexEntry(UID_RAW, Optional.of(CREATION), Optional.empty(), false);
-        KeyIndexResult key =
-                new KeyIndexResult(FINGERPRINT, 22, Optional.empty(), CREATION, Optional.empty(), false, List.of(uid));
+        KeyIndexResult key = new KeyIndexResult(
+                FINGERPRINT, 22, Optional.empty(), CREATION, Optional.empty(), false, false, List.of(uid));
         this.fakeService.indexResults = List.of(key);
 
         // when — client requests machine-readable index
@@ -111,8 +111,8 @@ class LookupEndpointIndexTest {
     void setsFlagRForRevokedKey() {
         // given — a revoked key without expiration
         UidIndexEntry uid = new UidIndexEntry(UID_RAW, Optional.of(CREATION), Optional.empty(), false);
-        KeyIndexResult key =
-                new KeyIndexResult(FINGERPRINT, 22, Optional.empty(), CREATION, Optional.empty(), true, List.of(uid));
+        KeyIndexResult key = new KeyIndexResult(
+                FINGERPRINT, 22, Optional.empty(), CREATION, Optional.empty(), true, false, List.of(uid));
         this.fakeService.indexResults = List.of(key);
 
         // when — client requests machine-readable index
@@ -132,7 +132,7 @@ class LookupEndpointIndexTest {
         OffsetDateTime pastExpiry = OffsetDateTime.of(2000, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC);
         UidIndexEntry uid = new UidIndexEntry(UID_RAW, Optional.of(CREATION), Optional.of(pastExpiry), false);
         KeyIndexResult key = new KeyIndexResult(
-                FINGERPRINT, 22, Optional.empty(), CREATION, Optional.of(pastExpiry), false, List.of(uid));
+                FINGERPRINT, 22, Optional.empty(), CREATION, Optional.of(pastExpiry), false, false, List.of(uid));
         this.fakeService.indexResults = List.of(key);
 
         // when — client requests machine-readable index
@@ -153,8 +153,8 @@ class LookupEndpointIndexTest {
     void rendersHtmlWhenOptionsMrAbsent() {
         // given — one key in the repository, no options=mr in the request
         UidIndexEntry uid = new UidIndexEntry(UID_RAW, Optional.of(CREATION), Optional.empty(), false);
-        KeyIndexResult key =
-                new KeyIndexResult(FINGERPRINT, 22, Optional.empty(), CREATION, Optional.empty(), false, List.of(uid));
+        KeyIndexResult key = new KeyIndexResult(
+                FINGERPRINT, 22, Optional.empty(), CREATION, Optional.empty(), false, false, List.of(uid));
         this.fakeService.indexResults = List.of(key);
 
         // when — client sends op=index without options=mr (browser request)
@@ -169,6 +169,25 @@ class LookupEndpointIndexTest {
         assertThat(body)
                 .as("HTML body must contain the fingerprint so users can identify the key")
                 .contains(FINGERPRINT);
+    }
+
+    @Test
+    void setsFlagDForDisabledKey() {
+        // given — a key that has been disabled on this keyserver (not OpenPGP-revoked)
+        UidIndexEntry uid = new UidIndexEntry(UID_RAW, Optional.of(CREATION), Optional.empty(), false);
+        KeyIndexResult key = new KeyIndexResult(
+                FINGERPRINT, 22, Optional.empty(), CREATION, Optional.empty(), false, true, List.of(uid));
+        this.fakeService.indexResults = List.of(key);
+
+        // when — client requests machine-readable index
+        Response response = this.endpoint.doLookup("index", "alice@example.com", null, "mr");
+        String body = (String) response.getEntity();
+
+        // then — the pub: flags field must contain 'd' (not 'r') since the key is disabled, not revoked
+        // format: pub:<fingerprint>:<algo>:<keylen>:<ctime>:<exptime>:<flags>
+        assertThat(body)
+                .as("keyserver-disabled key must have 'd' in pub: flags; 'r' is reserved for OpenPGP revocation")
+                .contains("pub:" + FINGERPRINT + ":22::" + CREATION.toEpochSecond() + "::d\n");
     }
 
     // ---------------------------------------------------------------------------

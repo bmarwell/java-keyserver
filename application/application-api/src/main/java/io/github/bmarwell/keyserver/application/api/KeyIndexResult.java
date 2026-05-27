@@ -15,6 +15,10 @@ import java.util.Optional;
 /// format (`pub:` line) plus all verified UIDs (`uid:` lines).
 /// Only verified UIDs appear in {@code verifiedUids} — unverified UIDs
 /// are never exposed.
+///
+/// The {@code disabled} flag is a keyserver-administrative flag (HKP `d`).
+/// It is independent of the OpenPGP {@code revoked} flag: an operator may
+/// disable a key on this server without the key owner having revoked it.
 public record KeyIndexResult(
         String fingerprint,
         int algorithm,
@@ -22,4 +26,5 @@ public record KeyIndexResult(
         OffsetDateTime creationTime,
         Optional<OffsetDateTime> expirationTime,
         boolean revoked,
+        boolean disabled,
         List<UidIndexEntry> verifiedUids) {}

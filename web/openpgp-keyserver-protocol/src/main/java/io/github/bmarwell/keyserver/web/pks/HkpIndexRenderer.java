@@ -36,8 +36,11 @@ public class HkpIndexRenderer {
     /// uid:&lt;pct-encoded-uid&gt;:&lt;ctime&gt;:&lt;exptime&gt;:&lt;flags&gt;
     /// </pre>
     ///
-    /// Flags: `r` if revoked, `e` if expired (expiration is in the past), or empty.
+    /// Flags (in spec order): `r` if revoked, `d` if disabled on this keyserver,
+    /// `e` if expired (expiration is in the past), or empty.
     /// Key length is empty for ECC keys (bit strength is null), numeric for RSA/DSA.
+    /// The `d` flag is a keyserver-administrative concept; it does not appear on
+    /// `uid:` lines since UIDs are not disabled independently.
     public String renderMachineReadable(List<KeyIndexResult> results) {
         Instant now = Instant.now();
         StringBuilder sb = new StringBuilder();
@@ -51,7 +54,7 @@ public class HkpIndexRenderer {
             sb.append(toEpochSeconds(key.creationTime())).append(':');
             sb.append(key.expirationTime().map(HkpIndexRenderer::toEpochSeconds).orElse(""))
                     .append(':');
-            sb.append(computeFlags(key.revoked(), key.expirationTime(), now));
+            sb.append(computeFlags(key.revoked(), key.disabled(), key.expirationTime(), now));
             sb.append('\n');
             for (UidIndexEntry uid : key.verifiedUids()) {
                 sb.append("uid:");
@@ -70,7 +73,8 @@ public class HkpIndexRenderer {
                                 .map(HkpIndexRenderer::toEpochSeconds)
                                 .orElse(""))
                         .append(':');
-                sb.append(computeFlags(uid.revoked(), uid.expirationTime(), now));
+                // UIDs are not disabled independently; pass false for the 'd' flag.
+                sb.append(computeFlags(uid.revoked(), false, uid.expirationTime(), now));
                 sb.append('\n');
             }
         }
@@ -96,7 +100,7 @@ public class HkpIndexRenderer {
                     .append(key.expirationTime().map(Object::toString).orElse(""))
                     .append("</td>");
             sb.append("<td>")
-                    .append(computeFlags(key.revoked(), key.expirationTime(), now))
+                    .append(computeFlags(key.revoked(), key.disabled(), key.expirationTime(), now))
                     .append("</td>");
             sb.append("<td>");
             for (UidIndexEntry uid : key.verifiedUids()) {
@@ -113,10 +117,14 @@ public class HkpIndexRenderer {
         return String.valueOf(dt.toEpochSecond());
     }
 
-    private static String computeFlags(boolean revoked, Optional<OffsetDateTime> expiration, Instant now) {
+    private static String computeFlags(
+            boolean revoked, boolean disabled, Optional<OffsetDateTime> expiration, Instant now) {
         StringBuilder flags = new StringBuilder();
         if (revoked) {
             flags.append('r');
+        }
+        if (disabled) {
+            flags.append('d');
         }
         if (expiration.isPresent() && expiration.get().toInstant().isBefore(now)) {
             flags.append('e');
