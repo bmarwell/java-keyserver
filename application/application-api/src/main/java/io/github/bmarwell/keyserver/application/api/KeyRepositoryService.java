@@ -8,6 +8,7 @@ package io.github.bmarwell.keyserver.application.api;
 import io.github.bmarwell.keyserver.common.ids.KeyId;
 import io.github.bmarwell.keyserver.common.ids.PgpPublicKey;
 import io.github.bmarwell.keyserver.common.ids.RepositoryName;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -30,4 +31,14 @@ public interface KeyRepositoryService {
     /// @param search     HKP search string
     /// @param exactMatch if true, only exact fingerprint or email matches are returned
     Optional<String> getArmoredKeyBySearch(String search, boolean exactMatch);
+
+    /// Searches for all matching keys and returns their index metadata for `op=index` responses.
+    ///
+    /// Uses the same search routing as {@link #getArmoredKeyBySearch} but returns all matching
+    /// keys (not just the first) along with algorithm, timestamp, and verified-UID metadata
+    /// needed to render the HKP machine-readable index format.
+    ///
+    /// @param search     HKP search string
+    /// @param exactMatch if true, only exact fingerprint or email matches are returned
+    List<KeyIndexResult> searchForIndex(String search, boolean exactMatch);
 }

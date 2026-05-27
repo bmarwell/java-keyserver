@@ -5,6 +5,7 @@
  */
 package io.github.bmarwell.keyserver.application.core;
 
+import io.github.bmarwell.keyserver.application.api.KeyIndexResult;
 import io.github.bmarwell.keyserver.application.api.KeyRepositoryService;
 import io.github.bmarwell.keyserver.application.port.repository.KeyRepository;
 import io.github.bmarwell.keyserver.common.ids.KeyId;
@@ -14,6 +15,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Default;
 import jakarta.inject.Inject;
 import java.io.Serializable;
+import java.util.List;
 import java.util.Optional;
 
 @Default
@@ -36,6 +38,11 @@ public class PersistentKeyRepositoryService implements KeyRepositoryService, Ser
     @Override
     public Optional<String> getArmoredKeyBySearch(String search, boolean exactMatch) {
         return keyRepository.findBySearch(search, exactMatch).map(KeyRepository.KeySearchResult::armoredKey);
+    }
+
+    @Override
+    public List<KeyIndexResult> searchForIndex(String search, boolean exactMatch) {
+        return this.keyRepository.findManyBySearch(search, exactMatch);
     }
 
     // CDI-friendly setter for unit testing

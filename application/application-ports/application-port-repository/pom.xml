@@ -13,4 +13,12 @@
   <version>0.1.0-SNAPSHOT</version>
   <name>Java Keyserver :: application :: port :: repository</name>
 
+  <dependencies>
+    <dependency>
+      <groupId>io.github.bmarwell.keyserver</groupId>
+      <artifactId>keyserver-application-api</artifactId>
+      <version>0.1.0-SNAPSHOT</version>
+    </dependency>
+  </dependencies>
+
 </project>

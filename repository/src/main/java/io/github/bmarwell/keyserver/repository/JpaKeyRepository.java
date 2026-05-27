@@ -5,6 +5,8 @@
  */
 package io.github.bmarwell.keyserver.repository;
 
+import io.github.bmarwell.keyserver.application.api.KeyIndexResult;
+import io.github.bmarwell.keyserver.application.api.UidIndexEntry;
 import io.github.bmarwell.keyserver.application.port.repository.KeyRepository;
 import io.github.bmarwell.keyserver.application.port.repository.KeyRepository.KeySearchResult;
 import io.github.bmarwell.keyserver.repository.entity.KeyEntity;
@@ -151,6 +153,30 @@ public class JpaKeyRepository extends BaseRepository implements KeyRepository {
         return findByUidSubstring(normalized);
     }
 
+    @Override
+    @Transactional
+    public List<KeyIndexResult> findManyBySearch(String search, boolean exactMatch) {
+        if (search == null || search.isBlank()) {
+            return List.of();
+        }
+
+        String normalized = search.strip();
+
+        String hexCandidate = normalized.startsWith("0x") ? normalized.substring(2) : normalized;
+        if ((normalized.startsWith("0x") || isHexString(hexCandidate)) && isValidKeyIdLength(hexCandidate.length())) {
+            return findManyByKeyIdOrFingerprint(hexCandidate);
+        }
+
+        if (normalized.contains("@")) {
+            return findManyByEmail(normalized.toLowerCase(Locale.ROOT), exactMatch);
+        }
+
+        if (exactMatch) {
+            return List.of();
+        }
+        return findManyByUidSubstring(normalized);
+    }
+
     private Optional<KeySearchResult> findByKeyIdOrFingerprint(String hexValue) {
         // Normalise to uppercase: fingerprint (and the DB-generated keyid_long column) are stored
         // as uppercase.  Avoiding LOWER() on the column allows the DB to use the keys_keyid_long
@@ -159,12 +185,10 @@ public class JpaKeyRepository extends BaseRepository implements KeyRepository {
         int len = upper.length();
 
         if (len == 40 || len == 64) {
-            // Full fingerprint — primary key lookup (always indexed).
             return toResult(getEntityManager().find(KeyEntity.class, upper));
         }
 
         if (len == 16) {
-            // Long key ID: exact match on the generated keyid_long column (uses keys_keyid_long index).
             List<KeyEntity> results = getEntityManager()
                     .createQuery("SELECT k FROM KeyEntity k WHERE k.keyidLong = :keyId", KeyEntity.class)
                     .setParameter("keyId", upper)
@@ -174,8 +198,7 @@ public class JpaKeyRepository extends BaseRepository implements KeyRepository {
         }
 
         // Short key ID (8 chars): reverse it and use the rfingerprint text_pattern_ops index for a
-        // prefix scan.  reverse(fingerprint) starts with reverse(shortKeyId), so this matches the
-        // last 8 chars of the fingerprint without a leading-wildcard LIKE on the forward column.
+        // prefix scan.
         String reversedShortId = new StringBuilder(upper).reverse().toString();
         List<KeyEntity> results = getEntityManager()
                 .createQuery("SELECT k FROM KeyEntity k WHERE k.rfingerprint LIKE :prefix", KeyEntity.class)
@@ -185,31 +208,85 @@ public class JpaKeyRepository extends BaseRepository implements KeyRepository {
         return results.isEmpty() ? Optional.empty() : toResult(results.get(0));
     }
 
+    private List<KeyIndexResult> findManyByKeyIdOrFingerprint(String hexValue) {
+        String upper = hexValue.toUpperCase(Locale.ROOT);
+        int len = upper.length();
+
+        if (len == 40 || len == 64) {
+            // Full fingerprint — primary key lookup (always indexed).
+            KeyEntity entity = getEntityManager().find(KeyEntity.class, upper);
+            return toIndexResults(entity == null ? List.of() : List.of(entity));
+        }
+
+        if (len == 16) {
+            // Long key ID: exact match on the generated keyid_long column (uses keys_keyid_long index).
+            List<KeyEntity> results = getEntityManager()
+                    .createQuery("SELECT k FROM KeyEntity k WHERE k.keyidLong = :keyId", KeyEntity.class)
+                    .setParameter("keyId", upper)
+                    .getResultList();
+            return toIndexResults(results);
+        }
+
+        // Short key ID (8 chars): reverse it and use the rfingerprint text_pattern_ops index for a
+        // prefix scan.  reverse(fingerprint) starts with reverse(shortKeyId), so this matches the
+        // last 8 chars of the fingerprint without a leading-wildcard LIKE on the forward column.
+        String reversedShortId = new StringBuilder(upper).reverse().toString();
+        List<KeyEntity> results = getEntityManager()
+                .createQuery("SELECT k FROM KeyEntity k WHERE k.rfingerprint LIKE :prefix", KeyEntity.class)
+                .setParameter("prefix", reversedShortId + "%")
+                .getResultList();
+        return toIndexResults(results);
+    }
+
     private Optional<KeySearchResult> findByEmail(String email, boolean exactMatch) {
+        List<KeyEntity> results = queryEntitiesByEmail(email, exactMatch, 1);
+        return results.isEmpty() ? Optional.empty() : toResult(results.get(0));
+    }
+
+    private List<KeyIndexResult> findManyByEmail(String email, boolean exactMatch) {
+        return toIndexResults(queryEntitiesByEmail(email, exactMatch, Integer.MAX_VALUE));
+    }
+
+    /// Returns KeyEntity rows for a given email filter.
+    ///
+    /// Keeps the JPQL in one place so both the single-result and multi-result paths
+    /// stay in sync when the schema changes.
+    private List<KeyEntity> queryEntitiesByEmail(String email, boolean exactMatch, int maxResults) {
         String jpql = exactMatch
                 ? "SELECT DISTINCT k FROM KeyEntity k JOIN k.uids u"
                         + " WHERE LOWER(u.uidEmail) = :email AND u.verified = true"
                 : "SELECT DISTINCT k FROM KeyEntity k JOIN k.uids u"
                         + " WHERE LOWER(u.uidEmail) LIKE :email AND u.verified = true";
         String param = exactMatch ? email : "%" + email + "%";
-        List<KeyEntity> results = getEntityManager()
+        return getEntityManager()
                 .createQuery(jpql, KeyEntity.class)
                 .setParameter("email", param)
-                .setMaxResults(1)
+                .setMaxResults(maxResults)
                 .getResultList();
-        return results.isEmpty() ? Optional.empty() : toResult(results.get(0));
     }
 
     private Optional<KeySearchResult> findByUidSubstring(String term) {
-        List<KeyEntity> results = getEntityManager()
+        List<KeyEntity> results = queryEntitiesByUidSubstring(term, 1);
+        return results.isEmpty() ? Optional.empty() : toResult(results.get(0));
+    }
+
+    private List<KeyIndexResult> findManyByUidSubstring(String term) {
+        return toIndexResults(queryEntitiesByUidSubstring(term, Integer.MAX_VALUE));
+    }
+
+    /// Returns KeyEntity rows whose raw UID text contains the given term (case-insensitive).
+    ///
+    /// Keeps the JPQL in one place so both the single-result and multi-result paths
+    /// stay in sync when the schema changes.
+    private List<KeyEntity> queryEntitiesByUidSubstring(String term, int maxResults) {
+        return getEntityManager()
                 .createQuery(
                         "SELECT DISTINCT k FROM KeyEntity k JOIN k.uids u"
                                 + " WHERE LOWER(u.uidRaw) LIKE :term AND u.verified = true",
                         KeyEntity.class)
                 .setParameter("term", "%" + term.toLowerCase(Locale.ROOT) + "%")
-                .setMaxResults(1)
+                .setMaxResults(maxResults)
                 .getResultList();
-        return results.isEmpty() ? Optional.empty() : toResult(results.get(0));
     }
 
     private static Optional<KeySearchResult> toResult(KeyEntity key) {
@@ -217,6 +294,26 @@ public class JpaKeyRepository extends BaseRepository implements KeyRepository {
             return Optional.empty();
         }
         return Optional.of(new KeySearchResult(key.getFingerprint(), key.getArmoredKey()));
+    }
+
+    private static List<KeyIndexResult> toIndexResults(List<KeyEntity> keys) {
+        return keys.stream().map(JpaKeyRepository::toIndexResult).toList();
+    }
+
+    private static KeyIndexResult toIndexResult(KeyEntity key) {
+        List<UidIndexEntry> uids = key.getUids().stream()
+                .filter(UidEntity::isVerified)
+                .map(u -> new UidIndexEntry(u.getUidRaw(), u.getCreationTime(), u.getExpirationTime(), u.isRevoked()))
+                .toList();
+
+        return new KeyIndexResult(
+                key.getFingerprint(),
+                key.getAlgorithm(),
+                key.getBitStrength(),
+                key.getCreationTime(),
+                key.getExpirationTime(),
+                key.isRevoked(),
+                uids);
     }
 
     private static boolean isHexString(String s) {
