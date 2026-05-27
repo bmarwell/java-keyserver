@@ -194,10 +194,33 @@ class KeyServerCommandServiceTest {
     }
 
     @Test
-    void records_failed_when_record_completed_throws_after_successful_dispatch() {
+    void records_completed_when_first_completion_write_fails_but_retry_succeeds() {
         // given
-        // Issue #134: a successful handler plus failing recordCompleted() must still end in a terminal FAILED BTX
-        // state.
+        // Issue #149: a transient completion-write failure must not permanently mark the BTX FAILED when a retry
+        // succeeds; the BTX must end up COMPLETED as if nothing went wrong.
+        var trackingRepo = new FailOnceOnRecordCompletedRepository();
+        var handler = new SuccessCommandHandler();
+        KeyServerCommandService service = buildService(trackingRepo, SimpleInstance.of(handler));
+
+        // when
+        service.handleCommand(new TestCommand(), CommandCallerContext.empty());
+
+        // then
+        assertThat(trackingRepo.recordCompletedAttemptCount)
+                .as("the service must attempt recordCompleted() twice: once failing, once succeeding")
+                .isEqualTo(2);
+        assertThat(trackingRepo.completedCount)
+                .as("the retry must land the BTX in COMPLETED rather than FAILED")
+                .isEqualTo(1);
+        assertThat(trackingRepo.failedCount)
+                .as("a transient first failure followed by a successful retry must not record any FAILED state")
+                .isZero();
+    }
+
+    @Test
+    void records_failed_when_all_completion_write_attempts_fail() {
+        // given
+        // Only when both the initial attempt and the retry both fail should the BTX fall back to FAILED.
         var trackingRepo = new ThrowingOnRecordCompletedRepository();
         var handler = new SuccessCommandHandler();
         KeyServerCommandService service = buildService(trackingRepo, SimpleInstance.of(handler));
@@ -207,33 +230,32 @@ class KeyServerCommandServiceTest {
 
         // then
         assertThat(handler.executeCount)
-                .as("the handler must still execute successfully before the completion write fails")
+                .as("the handler must still execute successfully before the completion writes fail")
                 .isEqualTo(1);
         assertThat(trackingRepo.startedCount)
                 .as("the BTX row must still be opened for a successful command")
                 .isEqualTo(1);
         assertThat(trackingRepo.recordCompletedAttemptCount)
-                .as("the regression test must prove the service reached recordCompleted() before the simulated failure")
-                .isEqualTo(1);
+                .as("the service must attempt recordCompleted() twice (initial + retry) before giving up")
+                .isEqualTo(2);
         assertThat(trackingRepo.completedCount)
-                .as("the repository must not report COMPLETED when the completion write failed")
+                .as("the repository must not report COMPLETED when both completion writes failed")
                 .isZero();
         assertThat(trackingRepo.failedCount)
-                .as(
-                        "a completion-write failure after a successful handler must still move the BTX to a terminal FAILED state")
+                .as("exhausting all retry attempts must still move the BTX to a terminal FAILED state")
                 .isEqualTo(1);
         assertThat(trackingRepo.lastErrorType)
-                .as("completion-write failures should preserve the concrete persistence exception type for diagnosis")
+                .as("the retry exception type must be stored so operators can diagnose persistent completion failures")
                 .isEqualTo("IllegalStateException");
         assertThat(trackingRepo.lastErrorMessage)
-                .as("completion-write failures should still be clearly marked in the stored audit message")
-                .isEqualTo("BTX completion write failure: simulated completion write failure");
+                .as("the retry exception message must be stored unchanged without added prefixes")
+                .isEqualTo("simulated completion write failure");
     }
 
     @Test
-    void swallows_record_failed_when_completion_and_fallback_writes_both_throw() {
+    void swallows_record_failed_when_all_completion_and_fallback_writes_throw() {
         // given
-        // Even if both terminal-state writes fail, the async service must log and swallow rather than propagate.
+        // Even if every write attempt fails, the async service must log and swallow rather than propagate.
         var trackingRepo = new ThrowingOnCompletionAndFailureRepository();
         var handler = new SuccessCommandHandler();
         KeyServerCommandService service = buildService(trackingRepo, SimpleInstance.of(handler));
@@ -243,13 +265,13 @@ class KeyServerCommandServiceTest {
 
         // then
         assertThat(handler.executeCount)
-                .as("the command handler must already have completed before the BTX completion write fails")
+                .as("the command handler must already have completed before the BTX completion writes fail")
                 .isEqualTo(1);
         assertThat(trackingRepo.recordCompletedAttemptCount)
-                .as("the service must attempt the normal BTX completion write first")
-                .isEqualTo(1);
+                .as("the service must attempt recordCompleted() twice (initial + retry) before falling back")
+                .isEqualTo(2);
         assertThat(trackingRepo.recordFailedAttemptCount)
-                .as("after the completion write fails, the service must attempt the terminal FAILED fallback")
+                .as("after both completion attempts fail, the service must attempt the terminal FAILED fallback")
                 .isEqualTo(1);
         assertThat(trackingRepo.failedCount)
                 .as("the fallback write never persisted because the repository simulated a second failure")
@@ -330,6 +352,16 @@ class KeyServerCommandServiceTest {
         @Override
         protected void beforeMarkingCompleted(long btxId) {
             throw new IllegalStateException("simulated completion write failure");
+        }
+    }
+
+    private static final class FailOnceOnRecordCompletedRepository extends TrackingBusinessTransactionRepository {
+        @Override
+        protected void beforeMarkingCompleted(long btxId) {
+            // Throw only on the first attempt to simulate a transient failure that the retry resolves.
+            if (this.recordCompletedAttemptCount == 1) {
+                throw new IllegalStateException("simulated transient completion write failure");
+            }
         }
     }
 
