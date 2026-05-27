@@ -60,8 +60,12 @@ class VerifyRendererTest {
         String html = this.renderer.renderSuccess(result);
 
         // then
-        assertThat(html).doesNotContain("Bob & Alice <bob&alice@example.com>");
-        assertThat(html).contains("Bob &amp; Alice &lt;bob&amp;alice@example.com&gt;");
+        assertThat(html)
+                .as("raw < > & must not appear unescaped in the rendered HTML")
+                .doesNotContain("Bob & Alice <bob&alice@example.com>");
+        assertThat(html)
+                .as("Freemarker must HTML-escape ampersands and angle brackets in .ftlh templates")
+                .contains("Bob &amp; Alice &lt;bob&amp;alice@example.com&gt;");
     }
 
     @Test
