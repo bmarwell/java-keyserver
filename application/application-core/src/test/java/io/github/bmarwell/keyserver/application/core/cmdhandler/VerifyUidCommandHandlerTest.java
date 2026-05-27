@@ -63,6 +63,12 @@ class VerifyUidCommandHandlerTest {
         public Optional<KeySearchResult> findBySearch(String search, boolean exactMatch) {
             return Optional.empty();
         }
+
+        @Override
+        public List<io.github.bmarwell.keyserver.application.api.KeyIndexResult> findManyBySearch(
+                String search, boolean exactMatch) {
+            return List.of();
+        }
     }
 
     /**

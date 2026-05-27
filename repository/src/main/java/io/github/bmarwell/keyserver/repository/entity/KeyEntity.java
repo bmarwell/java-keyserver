@@ -59,6 +59,12 @@ public class KeyEntity {
     @Column(name = "revoked", nullable = false)
     private boolean revoked;
 
+    /// Keyserver-administrative flag: true if a keyserver operator has explicitly
+    /// disabled this key.  Unlike {@code revoked}, this flag is not set by the key
+    /// owner and is not reflected in the OpenPGP key material.
+    @Column(name = "disabled", nullable = false)
+    private boolean disabled;
+
     /// Full ASCII-armored public key block returned verbatim on `op=get`.
     @Column(name = "armored_key", nullable = false)
     private String armoredKey;
@@ -140,6 +146,15 @@ public class KeyEntity {
 
     public void setRevoked(boolean revoked) {
         this.revoked = revoked;
+        this.mtime = OffsetDateTime.now();
+    }
+
+    public boolean isDisabled() {
+        return disabled;
+    }
+
+    public void setDisabled(boolean disabled) {
+        this.disabled = disabled;
         this.mtime = OffsetDateTime.now();
     }
 

@@ -5,6 +5,8 @@
  */
 package io.github.bmarwell.keyserver.repository;
 
+import io.github.bmarwell.keyserver.application.api.KeyIndexResult;
+import io.github.bmarwell.keyserver.application.api.UidIndexEntry;
 import io.github.bmarwell.keyserver.application.port.repository.KeyRepository;
 import io.github.bmarwell.keyserver.application.port.repository.KeyRepository.KeySearchResult;
 import io.github.bmarwell.keyserver.repository.entity.KeyEntity;
@@ -12,6 +14,7 @@ import io.github.bmarwell.keyserver.repository.entity.UidEntity;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Default;
 import jakarta.persistence.LockModeType;
+import jakarta.persistence.TypedQuery;
 import jakarta.transaction.Transactional;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -49,6 +52,32 @@ import org.bouncycastle.openpgp.operator.bc.BcKeyFingerprintCalculator;
 @Default
 @ApplicationScoped
 public class JpaKeyRepository extends BaseRepository implements KeyRepository {
+
+    /// Maximum number of keys returned by multi-result index queries.
+    ///
+    /// A broad search term (e.g. a common email domain or UID substring) could otherwise
+    /// load an unbounded number of key rows — together with their UID collections — into a
+    /// single JPA transaction.  5 000 matches what popular HKP clients are expected to handle
+    /// and prevents memory exhaustion under adversarial inputs.
+    private static final int INDEX_RESULT_LIMIT = 5_000;
+
+    // -------------------------------------------------------------------------
+    // JPA provider read-only query hints.
+    //
+    // Index queries map results directly to immutable DTOs; the entities are
+    // never written back.  Telling each provider to skip dirty tracking and lock
+    // acquisition reduces heap pressure and eliminates unnecessary lock rows.
+    // Unknown hints are silently ignored by every compliant JPA provider.
+    // -------------------------------------------------------------------------
+
+    /// Hibernate: mark loaded entities as read-only so dirty checking is skipped.
+    private static final String HINT_HIBERNATE_READ_ONLY = "org.hibernate.readOnly";
+
+    /// EclipseLink: detach objects immediately after loading (read-only session).
+    private static final String HINT_ECLIPSELINK_READ_ONLY = "eclipselink.read-only";
+
+    /// Apache OpenJPA: acquire no read lock, reducing contention on index queries.
+    private static final String HINT_OPENJPA_READ_LOCK_MODE = "openjpa.FetchPlan.ReadLockMode";
 
     @Override
     @Transactional
@@ -151,6 +180,30 @@ public class JpaKeyRepository extends BaseRepository implements KeyRepository {
         return findByUidSubstring(normalized);
     }
 
+    @Override
+    @Transactional
+    public List<KeyIndexResult> findManyBySearch(String search, boolean exactMatch) {
+        if (search == null || search.isBlank()) {
+            return List.of();
+        }
+
+        String normalized = search.strip();
+
+        String hexCandidate = normalized.startsWith("0x") ? normalized.substring(2) : normalized;
+        if ((normalized.startsWith("0x") || isHexString(hexCandidate)) && isValidKeyIdLength(hexCandidate.length())) {
+            return findManyByKeyIdOrFingerprint(hexCandidate);
+        }
+
+        if (normalized.contains("@")) {
+            return findManyByEmail(normalized.toLowerCase(Locale.ROOT), exactMatch);
+        }
+
+        if (exactMatch) {
+            return List.of();
+        }
+        return findManyByUidSubstring(normalized);
+    }
+
     private Optional<KeySearchResult> findByKeyIdOrFingerprint(String hexValue) {
         // Normalise to uppercase: fingerprint (and the DB-generated keyid_long column) are stored
         // as uppercase.  Avoiding LOWER() on the column allows the DB to use the keys_keyid_long
@@ -159,12 +212,10 @@ public class JpaKeyRepository extends BaseRepository implements KeyRepository {
         int len = upper.length();
 
         if (len == 40 || len == 64) {
-            // Full fingerprint — primary key lookup (always indexed).
             return toResult(getEntityManager().find(KeyEntity.class, upper));
         }
 
         if (len == 16) {
-            // Long key ID: exact match on the generated keyid_long column (uses keys_keyid_long index).
             List<KeyEntity> results = getEntityManager()
                     .createQuery("SELECT k FROM KeyEntity k WHERE k.keyidLong = :keyId", KeyEntity.class)
                     .setParameter("keyId", upper)
@@ -174,8 +225,7 @@ public class JpaKeyRepository extends BaseRepository implements KeyRepository {
         }
 
         // Short key ID (8 chars): reverse it and use the rfingerprint text_pattern_ops index for a
-        // prefix scan.  reverse(fingerprint) starts with reverse(shortKeyId), so this matches the
-        // last 8 chars of the fingerprint without a leading-wildcard LIKE on the forward column.
+        // prefix scan.
         String reversedShortId = new StringBuilder(upper).reverse().toString();
         List<KeyEntity> results = getEntityManager()
                 .createQuery("SELECT k FROM KeyEntity k WHERE k.rfingerprint LIKE :prefix", KeyEntity.class)
@@ -185,31 +235,147 @@ public class JpaKeyRepository extends BaseRepository implements KeyRepository {
         return results.isEmpty() ? Optional.empty() : toResult(results.get(0));
     }
 
+    private List<KeyIndexResult> findManyByKeyIdOrFingerprint(String hexValue) {
+        String upper = hexValue.toUpperCase(Locale.ROOT);
+        int len = upper.length();
+
+        if (len == 40 || len == 64) {
+            // Full fingerprint — switch from em.find() to JPQL so JOIN FETCH eagerly loads UIDs.
+            List<KeyEntity> results = applyReadOnlyHints(getEntityManager()
+                            .createQuery(
+                                    "SELECT DISTINCT k FROM KeyEntity k JOIN FETCH k.uids"
+                                            + " WHERE k.fingerprint = :fp",
+                                    KeyEntity.class)
+                            .setParameter("fp", upper))
+                    .getResultList();
+            return toIndexResults(results);
+        }
+
+        if (len == 16) {
+            List<KeyEntity> results = applyReadOnlyHints(getEntityManager()
+                            .createQuery(
+                                    "SELECT DISTINCT k FROM KeyEntity k JOIN FETCH k.uids"
+                                            + " WHERE k.keyidLong = :keyId",
+                                    KeyEntity.class)
+                            .setParameter("keyId", upper))
+                    .getResultList();
+            return toIndexResults(results);
+        }
+
+        // Short key ID (8 chars): reverse it and use the rfingerprint text_pattern_ops index for a
+        // prefix scan.  reverse(fingerprint) starts with reverse(shortKeyId), so this matches the
+        // last 8 chars of the fingerprint without a leading-wildcard LIKE on the forward column.
+        String reversedShortId = new StringBuilder(upper).reverse().toString();
+        List<KeyEntity> results = applyReadOnlyHints(getEntityManager()
+                        .createQuery(
+                                "SELECT DISTINCT k FROM KeyEntity k JOIN FETCH k.uids"
+                                        + " WHERE k.rfingerprint LIKE :prefix",
+                                KeyEntity.class)
+                        .setParameter("prefix", reversedShortId + "%"))
+                .getResultList();
+        return toIndexResults(results);
+    }
+
     private Optional<KeySearchResult> findByEmail(String email, boolean exactMatch) {
+        List<KeyEntity> results = queryEntitiesByEmail(email, exactMatch, 1);
+        return results.isEmpty() ? Optional.empty() : toResult(results.get(0));
+    }
+
+    private List<KeyIndexResult> findManyByEmail(String email, boolean exactMatch) {
+        List<String> fingerprints = queryFingerprintsByEmail(email, exactMatch);
+        return fingerprints.isEmpty() ? List.of() : fetchIndexResultsByFingerprints(fingerprints);
+    }
+
+    /// Returns at most one KeyEntity row for a given email filter (single-result path).
+    ///
+    /// Keeps the JPQL in one place; callers must always pass {@code maxResults = 1}.
+    /// The multi-result path uses {@link #queryFingerprintsByEmail} instead.
+    private List<KeyEntity> queryEntitiesByEmail(String email, boolean exactMatch, int maxResults) {
         String jpql = exactMatch
                 ? "SELECT DISTINCT k FROM KeyEntity k JOIN k.uids u"
                         + " WHERE LOWER(u.uidEmail) = :email AND u.verified = true"
                 : "SELECT DISTINCT k FROM KeyEntity k JOIN k.uids u"
                         + " WHERE LOWER(u.uidEmail) LIKE :email AND u.verified = true";
         String param = exactMatch ? email : "%" + email + "%";
-        List<KeyEntity> results = getEntityManager()
+        return getEntityManager()
                 .createQuery(jpql, KeyEntity.class)
                 .setParameter("email", param)
-                .setMaxResults(1)
+                .setMaxResults(maxResults)
                 .getResultList();
-        return results.isEmpty() ? Optional.empty() : toResult(results.get(0));
+    }
+
+    /// First query of the two-query pattern for email index searches.
+    ///
+    /// Selects fingerprints only (no collection fetch) so that {@link #INDEX_RESULT_LIMIT}
+    /// is applied correctly at the SQL level.  The caller then passes the fingerprint list
+    /// to {@link #fetchIndexResultsByFingerprints} which loads the full entity graph
+    /// via {@code JOIN FETCH} without any conflicting pagination.
+    private List<String> queryFingerprintsByEmail(String email, boolean exactMatch) {
+        String jpql = exactMatch
+                ? "SELECT DISTINCT k.fingerprint FROM KeyEntity k JOIN k.uids u"
+                        + " WHERE LOWER(u.uidEmail) = :email AND u.verified = true"
+                : "SELECT DISTINCT k.fingerprint FROM KeyEntity k JOIN k.uids u"
+                        + " WHERE LOWER(u.uidEmail) LIKE :email AND u.verified = true";
+        String param = exactMatch ? email : "%" + email + "%";
+        return applyReadOnlyHints(getEntityManager()
+                        .createQuery(jpql, String.class)
+                        .setParameter("email", param)
+                        .setMaxResults(INDEX_RESULT_LIMIT))
+                .getResultList();
     }
 
     private Optional<KeySearchResult> findByUidSubstring(String term) {
-        List<KeyEntity> results = getEntityManager()
+        List<KeyEntity> results = queryEntitiesByUidSubstring(term, 1);
+        return results.isEmpty() ? Optional.empty() : toResult(results.get(0));
+    }
+
+    private List<KeyIndexResult> findManyByUidSubstring(String term) {
+        List<String> fingerprints = queryFingerprintsByUidSubstring(term);
+        return fingerprints.isEmpty() ? List.of() : fetchIndexResultsByFingerprints(fingerprints);
+    }
+
+    /// Returns at most one KeyEntity row whose raw UID text contains the given term (single-result path).
+    ///
+    /// Callers must always pass {@code maxResults = 1}.
+    /// The multi-result path uses {@link #queryFingerprintsByUidSubstring} instead.
+    private List<KeyEntity> queryEntitiesByUidSubstring(String term, int maxResults) {
+        return getEntityManager()
                 .createQuery(
                         "SELECT DISTINCT k FROM KeyEntity k JOIN k.uids u"
                                 + " WHERE LOWER(u.uidRaw) LIKE :term AND u.verified = true",
                         KeyEntity.class)
                 .setParameter("term", "%" + term.toLowerCase(Locale.ROOT) + "%")
-                .setMaxResults(1)
+                .setMaxResults(maxResults)
                 .getResultList();
-        return results.isEmpty() ? Optional.empty() : toResult(results.get(0));
+    }
+
+    /// First query of the two-query pattern for UID substring index searches.
+    ///
+    /// Selects fingerprints only so {@link #INDEX_RESULT_LIMIT} is applied at the SQL level.
+    private List<String> queryFingerprintsByUidSubstring(String term) {
+        return applyReadOnlyHints(getEntityManager()
+                        .createQuery(
+                                "SELECT DISTINCT k.fingerprint FROM KeyEntity k JOIN k.uids u"
+                                        + " WHERE LOWER(u.uidRaw) LIKE :term AND u.verified = true",
+                                String.class)
+                        .setParameter("term", "%" + term.toLowerCase(Locale.ROOT) + "%")
+                        .setMaxResults(INDEX_RESULT_LIMIT))
+                .getResultList();
+    }
+
+    /// Second query of the two-query pattern: loads full key entities with their UIDs eagerly.
+    ///
+    /// Because the fingerprint list was already bounded by {@link #INDEX_RESULT_LIMIT} in the
+    /// first query, this {@code JOIN FETCH} query has no conflicting pagination and the JPA
+    /// provider can apply the join at the SQL level without in-memory row reduction.
+    private List<KeyIndexResult> fetchIndexResultsByFingerprints(List<String> fingerprints) {
+        List<KeyEntity> entities = applyReadOnlyHints(getEntityManager()
+                        .createQuery(
+                                "SELECT DISTINCT k FROM KeyEntity k JOIN FETCH k.uids" + " WHERE k.fingerprint IN :fps",
+                                KeyEntity.class)
+                        .setParameter("fps", fingerprints))
+                .getResultList();
+        return toIndexResults(entities);
     }
 
     private static Optional<KeySearchResult> toResult(KeyEntity key) {
@@ -217,6 +383,51 @@ public class JpaKeyRepository extends BaseRepository implements KeyRepository {
             return Optional.empty();
         }
         return Optional.of(new KeySearchResult(key.getFingerprint(), key.getArmoredKey()));
+    }
+
+    private static List<KeyIndexResult> toIndexResults(List<KeyEntity> keys) {
+        return keys.stream()
+                .map(JpaKeyRepository::toIndexResult)
+                .filter(r -> !r.verifiedUids().isEmpty())
+                .toList();
+    }
+
+    private static KeyIndexResult toIndexResult(KeyEntity key) {
+        List<UidIndexEntry> uids = key.getUids().stream()
+                .filter(UidEntity::isVerified)
+                .map(u -> new UidIndexEntry(u.getUidRaw(), u.getCreationTime(), u.getExpirationTime(), u.isRevoked()))
+                .toList();
+
+        return new KeyIndexResult(
+                key.getFingerprint(),
+                key.getAlgorithm(),
+                key.getBitStrength(),
+                key.getCreationTime(),
+                key.getExpirationTime(),
+                key.isRevoked(),
+                key.isDisabled(),
+                uids);
+    }
+
+    /// Applies read-only query hints for the three major JPA providers.
+    ///
+    /// Index queries map results directly to immutable {@link KeyIndexResult} DTOs —
+    /// the loaded entities are never modified.  Signalling read-only intent allows each
+    /// provider to skip dirty tracking and lock acquisition:
+    /// <ul>
+    ///   <li>Hibernate ({@code org.hibernate.readOnly = true}): skips snapshot creation and
+    ///       dirty checking at flush time.</li>
+    ///   <li>EclipseLink ({@code eclipselink.read-only = true}): detaches objects immediately,
+    ///       preventing them from entering the identity map.</li>
+    ///   <li>Apache OpenJPA ({@code openjpa.FetchPlan.ReadLockMode = "NONE"}): suppresses
+    ///       implicit read-lock acquisition on each loaded row.</li>
+    /// </ul>
+    /// Unknown hints are silently ignored by all compliant JPA providers, so this method
+    /// is safe to call regardless of which provider is active at runtime.
+    private static <T> TypedQuery<T> applyReadOnlyHints(TypedQuery<T> query) {
+        return query.setHint(HINT_HIBERNATE_READ_ONLY, Boolean.TRUE)
+                .setHint(HINT_ECLIPSELINK_READ_ONLY, Boolean.TRUE)
+                .setHint(HINT_OPENJPA_READ_LOCK_MODE, "NONE");
     }
 
     private static boolean isHexString(String s) {

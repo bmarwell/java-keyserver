@@ -5,6 +5,8 @@
  */
 package io.github.bmarwell.keyserver.application.port.repository;
 
+import io.github.bmarwell.keyserver.application.api.KeyIndexResult;
+import java.util.List;
 import java.util.Optional;
 
 /// Secondary (outbound) port for the published key store.
@@ -17,7 +19,7 @@ public interface KeyRepository {
 
     /// Result type returned by key search queries.
     ///
-    /// Contains the minimal data required by the HKP `op=get` and `op=index` responses.
+    /// Contains the minimal data required by the HKP `op=get` response.
     /// The `armoredKey` field holds only the verified UIDs (privacy-preserving, per
     /// {@link #publishVerifiedUid} contract).
     record KeySearchResult(String fingerprint, String armoredKey) {}
@@ -52,4 +54,17 @@ public interface KeyRepository {
     /// @param search     HKP search string
     /// @param exactMatch when true, only exact fingerprint/email matches are returned
     Optional<KeySearchResult> findBySearch(String search, boolean exactMatch);
+
+    /// Searches for keys by fingerprint, key ID, email address, or UID substring and returns
+    /// full index metadata for all matching keys.
+    ///
+    /// Uses the same search routing as {@link #findBySearch} but returns all matching keys
+    /// (not limited to the first) and includes per-key algorithm, timestamp, and verified-UID
+    /// metadata needed to render HKP `op=index` responses.
+    ///
+    /// Only verified UIDs are included in each {@link KeyIndexResult#verifiedUids()} list.
+    ///
+    /// @param search     HKP search string
+    /// @param exactMatch when true, only exact fingerprint/email matches are returned
+    List<KeyIndexResult> findManyBySearch(String search, boolean exactMatch);
 }

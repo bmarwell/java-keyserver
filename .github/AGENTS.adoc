@@ -160,6 +160,17 @@ Every mutating command is wrapped in a BTX lifecycle:
 * Use `@Nullable` sparingly and only at boundaries that genuinely allow absence.
 * Prefer `Optional` instead of `@Nullable` for return types.
 * Never use `Optional` in fields, and avoid `Optional` parameters unless there is no cleaner API shape.
++
+[NOTE]
+====
+*Exception — immutable DTO record components:* `Optional<T>` is acceptable as a record _component_ when all of the
+following hold: (a) the record is an immutable value-type DTO that is never persisted or serialized to an external
+format, (b) the optionality is an intrinsic part of the domain concept (e.g. `expirationTime` that may genuinely be
+absent), and (c) there is no natural sentinel or null-object alternative.
+`KeyIndexResult` and `UidIndexEntry` satisfy these criteria — they are transient application-layer DTOs consumed and
+discarded within a single request, never mapped by JPA or written to JSON/XML.
+JPA entity fields and any class with `@XmlRootElement`, `@JsonSerialize`, or similar must still not use `Optional`.
+====
 * Avoid mixing docs, refactors, and behavior changes unless the task needs it.
 * After each Java or `pom.xml` change, run `./mvnw spotless:apply`.
 
