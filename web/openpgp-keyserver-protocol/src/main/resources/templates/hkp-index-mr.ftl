@@ -1,10 +1,10 @@
 <#-- Machine-readable HKP index response (options=mr). -->
 <#-- Plain text output (.ftl); all values must be pre-processed by Java before being passed here. -->
 <#-- Template variables: -->
-<#--   keyCount  (int)    - total number of keys in the result set -->
+<#--   keyCount  (String) - total number of keys in the result set (pre-converted to avoid locale formatting) -->
 <#--   keys      (list)   - each entry is a map with fields: -->
 <#--     fingerprint   (String) -->
-<#--     algorithm     (int)    - raw OpenPGP algorithm code -->
+<#--     algorithm     (String) - OpenPGP algorithm code (pre-converted to avoid locale formatting) -->
 <#--     bitStrength   (String) - empty string for ECC, numeric string for RSA/DSA -->
 <#--     ctimeEpoch    (String) - epoch seconds of creation time -->
 <#--     exptimeEpoch  (String) - epoch seconds of expiration, or empty string -->

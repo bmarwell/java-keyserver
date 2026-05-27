@@ -49,7 +49,7 @@ public class HkpIndexRenderer extends AbstractFreemarkerRenderer {
         Instant now = Instant.now();
         List<Map<String, Object>> keys =
                 results.stream().map(key -> buildMrKeyModel(key, now)).toList();
-        Map<String, Object> model = Map.of("keyCount", results.size(), "keys", keys);
+        Map<String, Object> model = Map.of("keyCount", String.valueOf(results.size()), "keys", keys);
         return processTemplate("hkp-index-mr.ftl", model);
     }
 
@@ -61,7 +61,7 @@ public class HkpIndexRenderer extends AbstractFreemarkerRenderer {
         Instant now = Instant.now();
         List<Map<String, Object>> keys =
                 results.stream().map(key -> buildHtmlKeyModel(key, now)).toList();
-        Map<String, Object> model = Map.of("keyCount", results.size(), "keys", keys);
+        Map<String, Object> model = Map.of("keyCount", String.valueOf(results.size()), "keys", keys);
         return processTemplate("hkp-index-html.ftlh", model);
     }
 
@@ -71,7 +71,7 @@ public class HkpIndexRenderer extends AbstractFreemarkerRenderer {
                 .toList();
         return Map.of(
                 "fingerprint", key.fingerprint(),
-                "algorithm", key.algorithm(),
+                "algorithm", String.valueOf(key.algorithm()),
                 "bitStrength", key.bitStrength().map(Object::toString).orElse(""),
                 "ctimeEpoch", toEpochSeconds(key.creationTime()),
                 "exptimeEpoch",
@@ -107,7 +107,7 @@ public class HkpIndexRenderer extends AbstractFreemarkerRenderer {
                 .toList();
         return Map.of(
                 "fingerprint", key.fingerprint(),
-                "algorithm", key.algorithm(),
+                "algorithm", String.valueOf(key.algorithm()),
                 "creationTime", key.creationTime().toString(),
                 "expirationTime", key.expirationTime().map(Object::toString).orElse(""),
                 "flags", computeFlags(key.revoked(), key.disabled(), key.expirationTime(), now),

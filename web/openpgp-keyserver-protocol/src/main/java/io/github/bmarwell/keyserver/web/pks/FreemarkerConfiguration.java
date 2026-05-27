@@ -50,6 +50,11 @@ public class FreemarkerConfiguration {
         cfg.setWrapUncheckedExceptions(true);
         cfg.setFallbackOnNullLoopVariable(false);
         cfg.setRecognizeStandardFileExtensions(true);
+        // Use "computer" number format to prevent locale-dependent grouping separators
+        // (e.g. "10,000" in en-US) from appearing in template output.  Raw numeric
+        // model values are rare — most are pre-converted to String in Java — but this
+        // acts as a safety net for future templates.
+        cfg.setNumberFormat("computer");
         return cfg;
     }
 }
