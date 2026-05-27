@@ -47,9 +47,8 @@ import org.jspecify.annotations.Nullable;
 ///    bean ensures CDI interceptors fire through the proxy rather than being
 ///    bypassed by a same-bean self-invocation.
 /// 5. On success the BTX row is updated to `COMPLETED` (also `REQUIRES_NEW`).
-/// 6. If the completion write itself fails after a successful handler, the service
-///    falls back to marking the BTX row `FAILED` with the original exception type
-///    and a prefixed audit message so the row still reaches a terminal state.
+/// 6. If the completion write fails (transient fault), it is retried once.  Only
+///    if both attempts fail does the service fall back to marking the BTX `FAILED`.
 /// 7. On any exception the BTX row is updated to `FAILED` (`REQUIRES_NEW`) and
 ///    the exception is logged.  It does NOT propagate back — the caller fired and forgot.
 @ManagedExecutorDefinition(name = "java:app/concurrent/KeyServerCommandExecutor", virtual = true, maxAsync = -1)
@@ -105,28 +104,41 @@ public class KeyServerCommandService implements CommandService, Serializable {
                     btxId);
         } finally {
             if (dispatchedSuccessfully) {
-                try {
-                    this.btxRepository.recordCompleted(btxId);
-                } catch (Exception ex) {
-                    this.recordFailedSafely(
-                            btxId,
-                            commandType,
-                            ex.getClass().getSimpleName(),
-                            this.toCompletionWriteFailureMessage(ex.getMessage()),
-                            ex,
-                            "Failed to mark BTX {0} COMPLETED after successful command {1}; attempting terminal FAILED fallback",
-                            btxId,
-                            commandType);
-                }
+                this.recordCompletedWithRetry(btxId, commandType);
             }
         }
     }
 
-    private String toCompletionWriteFailureMessage(@Nullable String errorMessage) {
-        if (errorMessage == null) {
-            return "BTX completion write failure";
+    /// Attempts to mark the BTX `COMPLETED`, retrying once on failure.
+    ///
+    /// The most common cause of a completion-write failure is transient (connection
+    /// hiccup, lock timeout).  Because each call uses `REQUIRES_NEW`, a retry is
+    /// safe and will land the row in the correct `COMPLETED` state.  Only if both
+    /// attempts fail does the method fall back to persisting a `FAILED` terminal state.
+    private void recordCompletedWithRetry(long btxId, String commandType) {
+        try {
+            this.btxRepository.recordCompleted(btxId);
+        } catch (Exception firstEx) {
+            this.logWithThrowable(
+                    Level.WARNING,
+                    firstEx,
+                    "BTX {0} completion write failed for command {1}; retrying once",
+                    btxId,
+                    commandType);
+            try {
+                this.btxRepository.recordCompleted(btxId);
+            } catch (Exception retryEx) {
+                this.recordFailedSafely(
+                        btxId,
+                        commandType,
+                        retryEx.getClass().getSimpleName(),
+                        retryEx.getMessage(),
+                        retryEx,
+                        "BTX {0} completion write failed after retry for command {1}; marking FAILED",
+                        btxId,
+                        commandType);
+            }
         }
-        return "BTX completion write failure: " + errorMessage;
     }
 
     private void recordFailedSafely(
