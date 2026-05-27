@@ -22,6 +22,7 @@ class VerifyRendererTest {
     @BeforeEach
     void setUp() {
         this.renderer = new VerifyRenderer();
+        this.renderer.setConfiguration(new FreemarkerConfiguration().freemarkerConfiguration());
     }
 
     @Test
@@ -52,20 +53,20 @@ class VerifyRendererTest {
 
     @Test
     void success_page_escapes_special_chars_in_uid() {
-        // given — UID contains angle brackets (common in PGP UIDs)
+        // given
         var result = new VerificationResult("Bob & Alice <bob&alice@example.com>", "FFFF");
 
         // when
         String html = this.renderer.renderSuccess(result);
 
-        // then — raw < > & must not appear unescaped inside the content
+        // then
         assertThat(html).doesNotContain("Bob & Alice <bob&alice@example.com>");
         assertThat(html).contains("Bob &amp; Alice &lt;bob&amp;alice@example.com&gt;");
     }
 
     @Test
     void expired_page_contains_doctype_and_charset() {
-        // given — no input required
+        // given
 
         // when
         String html = this.renderer.renderExpired();
@@ -78,7 +79,7 @@ class VerifyRendererTest {
 
     @Test
     void invalid_page_contains_doctype_and_charset() {
-        // given — no input required
+        // given
 
         // when
         String html = this.renderer.renderInvalid();
