@@ -55,7 +55,12 @@ public class HkpIndexRenderer {
             sb.append('\n');
             for (UidIndexEntry uid : key.verifiedUids()) {
                 sb.append("uid:");
-                sb.append(URLEncoder.encode(uid.uidRaw(), StandardCharsets.UTF_8))
+                // Use %20 for spaces (RFC 3986 percent-encoding) rather than +.
+                // URLEncoder uses application/x-www-form-urlencoded which encodes spaces as '+',
+                // but '+' is a legal literal character in UID strings and would be mis-decoded
+                // by strict HKP clients expecting RFC 3986.
+                sb.append(URLEncoder.encode(uid.uidRaw(), StandardCharsets.UTF_8)
+                                .replace("+", "%20"))
                         .append(':');
                 sb.append(uid.creationTime()
                                 .map(HkpIndexRenderer::toEpochSeconds)

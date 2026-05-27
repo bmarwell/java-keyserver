@@ -99,10 +99,12 @@ class LookupEndpointIndexTest {
         Response response = this.endpoint.doLookup("index", "alice@example.com", null, "mr");
         String body = (String) response.getEntity();
 
-        // then — UID must be percent-encoded so clients can safely parse the colon-delimited format
+        // then — UID must be percent-encoded using %20 for spaces (RFC 3986), not + (form-encoding)
+        // '+' is a legal literal character in UID strings and would be mis-decoded by strict clients
         assertThat(body)
-                .as("UID must be percent-encoded because colons and special chars would break the field delimiter")
-                .contains("uid:Alice+%3Calice%40example.com%3E:");
+                .as("UID must use %20 for spaces, not '+', because '+' is legal in UID strings and"
+                        + " would be mis-decoded by strict RFC 3986 percent-encoding clients")
+                .contains("uid:Alice%20%3Calice%40example.com%3E:");
     }
 
     @Test
@@ -137,10 +139,14 @@ class LookupEndpointIndexTest {
         Response response = this.endpoint.doLookup("index", "alice@example.com", null, "mr");
         String body = (String) response.getEntity();
 
-        // then — the pub: flags field must contain 'e' so GnuPG knows to mark the key as expired
+        // then — the pub: flags field (not just the uid: flags) must contain 'e'
+        // format: pub:<fingerprint>:<algo>:<keylen>:<ctime>:<exptime>:<flags>
+        // Asserting the full pub: line ensures we test the key-level flag specifically,
+        // not just the uid: line which would also show 'e' for the same expiry
         assertThat(body)
-                .as("expired key must have 'e' in flags so GnuPG does not attempt to use it for encryption")
-                .contains(":e\n");
+                .as("expired key must have 'e' in flags on the pub: line so GnuPG knows not to use it for encryption")
+                .contains("pub:" + FINGERPRINT + ":22::" + CREATION.toEpochSecond() + ":" + pastExpiry.toEpochSecond()
+                        + ":e\n");
     }
 
     @Test

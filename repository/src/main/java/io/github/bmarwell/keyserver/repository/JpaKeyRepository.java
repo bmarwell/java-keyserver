@@ -52,6 +52,14 @@ import org.bouncycastle.openpgp.operator.bc.BcKeyFingerprintCalculator;
 @ApplicationScoped
 public class JpaKeyRepository extends BaseRepository implements KeyRepository {
 
+    /// Maximum number of keys returned by multi-result index queries.
+    ///
+    /// A broad search term (e.g. a common email domain or UID substring) could otherwise
+    /// load an unbounded number of key rows — together with their UID collections — into a
+    /// single JPA transaction.  5 000 matches what popular HKP clients are expected to handle
+    /// and prevents memory exhaustion under adversarial inputs.
+    private static final int INDEX_RESULT_LIMIT = 5_000;
+
     @Override
     @Transactional
     public void publishVerifiedUid(String fingerprint, String uidRaw, String uidEmail, String armoredKey) {
@@ -244,13 +252,15 @@ public class JpaKeyRepository extends BaseRepository implements KeyRepository {
     }
 
     private List<KeyIndexResult> findManyByEmail(String email, boolean exactMatch) {
-        return toIndexResults(queryEntitiesByEmail(email, exactMatch, Integer.MAX_VALUE));
+        return toIndexResults(queryEntitiesByEmail(email, exactMatch, INDEX_RESULT_LIMIT));
     }
 
     /// Returns KeyEntity rows for a given email filter.
     ///
     /// Keeps the JPQL in one place so both the single-result and multi-result paths
-    /// stay in sync when the schema changes.
+    /// stay in sync when the schema changes.  Callers that want all results should pass
+    /// {@link #INDEX_RESULT_LIMIT} rather than {@link Integer#MAX_VALUE} to prevent
+    /// unbounded memory use.
     private List<KeyEntity> queryEntitiesByEmail(String email, boolean exactMatch, int maxResults) {
         String jpql = exactMatch
                 ? "SELECT DISTINCT k FROM KeyEntity k JOIN k.uids u"
@@ -271,13 +281,15 @@ public class JpaKeyRepository extends BaseRepository implements KeyRepository {
     }
 
     private List<KeyIndexResult> findManyByUidSubstring(String term) {
-        return toIndexResults(queryEntitiesByUidSubstring(term, Integer.MAX_VALUE));
+        return toIndexResults(queryEntitiesByUidSubstring(term, INDEX_RESULT_LIMIT));
     }
 
     /// Returns KeyEntity rows whose raw UID text contains the given term (case-insensitive).
     ///
     /// Keeps the JPQL in one place so both the single-result and multi-result paths
-    /// stay in sync when the schema changes.
+    /// stay in sync when the schema changes.  Callers that want all results should pass
+    /// {@link #INDEX_RESULT_LIMIT} rather than {@link Integer#MAX_VALUE} to prevent
+    /// unbounded memory use.
     private List<KeyEntity> queryEntitiesByUidSubstring(String term, int maxResults) {
         return getEntityManager()
                 .createQuery(
