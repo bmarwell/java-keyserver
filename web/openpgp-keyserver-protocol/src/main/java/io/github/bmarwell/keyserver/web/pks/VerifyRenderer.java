@@ -5,12 +5,8 @@
  */
 package io.github.bmarwell.keyserver.web.pks;
 
-import freemarker.template.Configuration;
-import freemarker.template.Template;
 import io.github.bmarwell.keyserver.application.api.VerificationResult;
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.inject.Inject;
-import java.io.StringWriter;
 import java.util.Map;
 
 /// Renders HTML pages for the UID verification endpoint.
@@ -23,17 +19,14 @@ import java.util.Map;
 /// </ul>
 ///
 /// Templates are loaded from the classpath under {@code /templates/} using the Freemarker
-/// {@link Configuration} produced by {@link FreemarkerConfiguration}.
+/// {@link freemarker.template.Configuration} produced by {@link FreemarkerConfiguration}.
 /// All three templates use the {@code .ftlh} extension, which activates Freemarker's HTML
 /// auto-escaping so that user-supplied values (e.g. UID strings) cannot inject HTML.
 ///
 /// The public method signatures are stable — switching the underlying template engine
 /// (or reverting to StringBuilder rendering) does not affect callers.
 @ApplicationScoped
-public class VerifyRenderer {
-
-    @Inject
-    Configuration configuration;
+public class VerifyRenderer extends AbstractFreemarkerRenderer {
 
     /// Renders a success page shown after a token is consumed and the UID published.
     ///
@@ -56,21 +49,5 @@ public class VerifyRenderer {
     /// @return HTML string with DOCTYPE and charset declaration
     public String renderInvalid() {
         return processTemplate("verify-invalid.ftlh", Map.of());
-    }
-
-    private String processTemplate(String templateName, Map<String, Object> model) {
-        try {
-            Template template = this.configuration.getTemplate(templateName);
-            StringWriter writer = new StringWriter();
-            template.process(model, writer);
-            return writer.toString();
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to render template: " + templateName, e);
-        }
-    }
-
-    // CDI-friendly setter for unit testing
-    public void setConfiguration(Configuration configuration) {
-        this.configuration = configuration;
     }
 }

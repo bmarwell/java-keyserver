@@ -5,13 +5,9 @@
  */
 package io.github.bmarwell.keyserver.web.pks;
 
-import freemarker.template.Configuration;
-import freemarker.template.Template;
 import io.github.bmarwell.keyserver.application.api.KeyIndexResult;
 import io.github.bmarwell.keyserver.application.api.UidIndexEntry;
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.inject.Inject;
-import java.io.StringWriter;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -33,10 +29,7 @@ import java.util.Optional;
 /// All derived values (epoch seconds, percent-encoded UIDs, flag strings) are computed
 /// in Java before being passed to templates.  Templates handle output structure only.
 @ApplicationScoped
-public class HkpIndexRenderer {
-
-    @Inject
-    Configuration configuration;
+public class HkpIndexRenderer extends AbstractFreemarkerRenderer {
 
     /// Renders the machine-readable HKP index format (`options=mr`).
     ///
@@ -121,17 +114,6 @@ public class HkpIndexRenderer {
                 "uids", uids);
     }
 
-    private String processTemplate(String templateName, Map<String, Object> model) {
-        try {
-            Template template = this.configuration.getTemplate(templateName);
-            StringWriter writer = new StringWriter();
-            template.process(model, writer);
-            return writer.toString();
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to render template: " + templateName, e);
-        }
-    }
-
     private static String toEpochSeconds(OffsetDateTime dt) {
         return String.valueOf(dt.toEpochSecond());
     }
@@ -149,10 +131,5 @@ public class HkpIndexRenderer {
             flags.append('e');
         }
         return flags.toString();
-    }
-
-    // CDI-friendly setter for unit testing
-    public void setConfiguration(Configuration configuration) {
-        this.configuration = configuration;
     }
 }
