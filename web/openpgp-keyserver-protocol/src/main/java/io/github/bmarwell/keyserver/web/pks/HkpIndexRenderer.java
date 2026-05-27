@@ -5,14 +5,19 @@
  */
 package io.github.bmarwell.keyserver.web.pks;
 
+import freemarker.template.Configuration;
+import freemarker.template.Template;
 import io.github.bmarwell.keyserver.application.api.KeyIndexResult;
 import io.github.bmarwell.keyserver.application.api.UidIndexEntry;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import java.io.StringWriter;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /// Renders HKP `op=index` responses in machine-readable and HTML formats.
@@ -24,8 +29,14 @@ import java.util.Optional;
 ///
 /// The HTML format is a simple table — sufficient for browser inspection but not required
 /// for GnuPG interoperability.
+///
+/// All derived values (epoch seconds, percent-encoded UIDs, flag strings) are computed
+/// in Java before being passed to templates.  Templates handle output structure only.
 @ApplicationScoped
 public class HkpIndexRenderer {
+
+    @Inject
+    Configuration configuration;
 
     /// Renders the machine-readable HKP index format (`options=mr`).
     ///
@@ -43,42 +54,10 @@ public class HkpIndexRenderer {
     /// `uid:` lines since UIDs are not disabled independently.
     public String renderMachineReadable(List<KeyIndexResult> results) {
         Instant now = Instant.now();
-        StringBuilder sb = new StringBuilder();
-        sb.append("info:1:").append(results.size()).append('\n');
-        for (KeyIndexResult key : results) {
-            sb.append("pub:");
-            sb.append(key.fingerprint()).append(':');
-            sb.append(key.algorithm()).append(':');
-            key.bitStrength().ifPresent(bs -> sb.append(bs));
-            sb.append(':');
-            sb.append(toEpochSeconds(key.creationTime())).append(':');
-            sb.append(key.expirationTime().map(HkpIndexRenderer::toEpochSeconds).orElse(""))
-                    .append(':');
-            sb.append(computeFlags(key.revoked(), key.disabled(), key.expirationTime(), now));
-            sb.append('\n');
-            for (UidIndexEntry uid : key.verifiedUids()) {
-                sb.append("uid:");
-                // Use %20 for spaces (RFC 3986 percent-encoding) rather than +.
-                // URLEncoder uses application/x-www-form-urlencoded which encodes spaces as '+',
-                // but '+' is a legal literal character in UID strings and would be mis-decoded
-                // by strict HKP clients expecting RFC 3986.
-                sb.append(URLEncoder.encode(uid.uidRaw(), StandardCharsets.UTF_8)
-                                .replace("+", "%20"))
-                        .append(':');
-                sb.append(uid.creationTime()
-                                .map(HkpIndexRenderer::toEpochSeconds)
-                                .orElse(""))
-                        .append(':');
-                sb.append(uid.expirationTime()
-                                .map(HkpIndexRenderer::toEpochSeconds)
-                                .orElse(""))
-                        .append(':');
-                // UIDs are not disabled independently; pass false for the 'd' flag.
-                sb.append(computeFlags(uid.revoked(), false, uid.expirationTime(), now));
-                sb.append('\n');
-            }
-        }
-        return sb.toString();
+        List<Map<String, Object>> keys =
+                results.stream().map(key -> buildMrKeyModel(key, now)).toList();
+        Map<String, Object> model = Map.of("keyCount", results.size(), "keys", keys);
+        return processTemplate("hkp-index-mr.ftl", model);
     }
 
     /// Renders a simple HTML table for browser display.
@@ -87,32 +66,70 @@ public class HkpIndexRenderer {
     /// and is provided as a human-readable fallback only.
     public String renderHtml(List<KeyIndexResult> results) {
         Instant now = Instant.now();
-        StringBuilder sb = new StringBuilder();
-        sb.append("<!DOCTYPE html>\n");
-        sb.append("<html><head><meta charset=\"utf-8\"><title>Key search results</title></head>");
-        sb.append("<body><h1>Search results: ").append(results.size()).append(" key(s)</h1>\n");
-        sb.append("<table border=\"1\"><tr><th>Fingerprint</th><th>Algorithm (OpenPGP code)</th>"
-                + "<th>Created</th><th>Expires</th><th>Flags</th><th>UIDs</th></tr>\n");
-        for (KeyIndexResult key : results) {
-            sb.append("<tr>");
-            sb.append("<td>").append(htmlEscape(key.fingerprint())).append("</td>");
-            sb.append("<td>").append(key.algorithm()).append("</td>");
-            sb.append("<td>").append(key.creationTime()).append("</td>");
-            sb.append("<td>")
-                    .append(key.expirationTime().map(Object::toString).orElse(""))
-                    .append("</td>");
-            sb.append("<td>")
-                    .append(computeFlags(key.revoked(), key.disabled(), key.expirationTime(), now))
-                    .append("</td>");
-            sb.append("<td>");
-            for (UidIndexEntry uid : key.verifiedUids()) {
-                sb.append(htmlEscape(uid.uidRaw())).append("<br>");
-            }
-            sb.append("</td>");
-            sb.append("</tr>\n");
+        List<Map<String, Object>> keys =
+                results.stream().map(key -> buildHtmlKeyModel(key, now)).toList();
+        Map<String, Object> model = Map.of("keyCount", results.size(), "keys", keys);
+        return processTemplate("hkp-index-html.ftlh", model);
+    }
+
+    private Map<String, Object> buildMrKeyModel(KeyIndexResult key, Instant now) {
+        List<Map<String, Object>> uids = key.verifiedUids().stream()
+                .map(uid -> buildMrUidModel(uid, now))
+                .toList();
+        return Map.of(
+                "fingerprint", key.fingerprint(),
+                "algorithm", key.algorithm(),
+                "bitStrength", key.bitStrength().map(Object::toString).orElse(""),
+                "ctimeEpoch", toEpochSeconds(key.creationTime()),
+                "exptimeEpoch",
+                        key.expirationTime()
+                                .map(HkpIndexRenderer::toEpochSeconds)
+                                .orElse(""),
+                "flags", computeFlags(key.revoked(), key.disabled(), key.expirationTime(), now),
+                "uids", uids);
+    }
+
+    private Map<String, Object> buildMrUidModel(UidIndexEntry uid, Instant now) {
+        // Use %20 for spaces (RFC 3986 percent-encoding) rather than +.
+        // URLEncoder uses application/x-www-form-urlencoded which encodes spaces as '+',
+        // but '+' is a legal literal character in UID strings and would be mis-decoded
+        // by strict HKP clients expecting RFC 3986.
+        String encodedUid =
+                URLEncoder.encode(uid.uidRaw(), StandardCharsets.UTF_8).replace("+", "%20");
+        return Map.of(
+                "encodedUid", encodedUid,
+                "ctimeEpoch",
+                        uid.creationTime().map(HkpIndexRenderer::toEpochSeconds).orElse(""),
+                "exptimeEpoch",
+                        uid.expirationTime()
+                                .map(HkpIndexRenderer::toEpochSeconds)
+                                .orElse(""),
+                // UIDs are not disabled independently; pass false for the 'd' flag.
+                "flags", computeFlags(uid.revoked(), false, uid.expirationTime(), now));
+    }
+
+    private Map<String, Object> buildHtmlKeyModel(KeyIndexResult key, Instant now) {
+        List<Map<String, Object>> uids = key.verifiedUids().stream()
+                .map(uid -> Map.<String, Object>of("uidRaw", uid.uidRaw()))
+                .toList();
+        return Map.of(
+                "fingerprint", key.fingerprint(),
+                "algorithm", key.algorithm(),
+                "creationTime", key.creationTime().toString(),
+                "expirationTime", key.expirationTime().map(Object::toString).orElse(""),
+                "flags", computeFlags(key.revoked(), key.disabled(), key.expirationTime(), now),
+                "uids", uids);
+    }
+
+    private String processTemplate(String templateName, Map<String, Object> model) {
+        try {
+            Template template = this.configuration.getTemplate(templateName);
+            StringWriter writer = new StringWriter();
+            template.process(model, writer);
+            return writer.toString();
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to render template: " + templateName, e);
         }
-        sb.append("</table></body></html>");
-        return sb.toString();
     }
 
     private static String toEpochSeconds(OffsetDateTime dt) {
@@ -134,7 +151,8 @@ public class HkpIndexRenderer {
         return flags.toString();
     }
 
-    private static String htmlEscape(String s) {
-        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
+    // CDI-friendly setter for unit testing
+    public void setConfiguration(Configuration configuration) {
+        this.configuration = configuration;
     }
 }
