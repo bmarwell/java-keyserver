@@ -48,6 +48,7 @@
     <immutables-value.version>2.10.0</immutables-value.version>
     <bouncycastle.version>1.84</bouncycastle.version>
     <hypersistence-tsid.version>2.1.4</hypersistence-tsid.version>
+    <freemarker.version>2.3.34</freemarker.version>
 
     <!-- plugin dependencies -->
     <palantir-java-format.version>2.91.0</palantir-java-format.version>
@@ -158,6 +159,12 @@
         <artifactId>flyway-database-postgresql</artifactId>
         <version>${flyway.version}</version>
         <scope>runtime</scope>
+      </dependency>
+
+      <dependency>
+        <groupId>org.freemarker</groupId>
+        <artifactId>freemarker</artifactId>
+        <version>${freemarker.version}</version>
       </dependency>
 
       <dependency>
