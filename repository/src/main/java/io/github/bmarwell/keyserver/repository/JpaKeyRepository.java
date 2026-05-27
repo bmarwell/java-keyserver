@@ -386,7 +386,10 @@ public class JpaKeyRepository extends BaseRepository implements KeyRepository {
     }
 
     private static List<KeyIndexResult> toIndexResults(List<KeyEntity> keys) {
-        return keys.stream().map(JpaKeyRepository::toIndexResult).toList();
+        return keys.stream()
+                .map(JpaKeyRepository::toIndexResult)
+                .filter(r -> !r.verifiedUids().isEmpty())
+                .toList();
     }
 
     private static KeyIndexResult toIndexResult(KeyEntity key) {

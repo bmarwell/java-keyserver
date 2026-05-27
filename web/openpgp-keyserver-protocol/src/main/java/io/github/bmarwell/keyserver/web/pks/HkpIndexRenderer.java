@@ -89,7 +89,7 @@ public class HkpIndexRenderer {
         Instant now = Instant.now();
         StringBuilder sb = new StringBuilder();
         sb.append("<html><body><h1>Search results: ").append(results.size()).append(" key(s)</h1>\n");
-        sb.append("<table border=\"1\"><tr><th>Fingerprint</th><th>Algorithm</th>"
+        sb.append("<table border=\"1\"><tr><th>Fingerprint</th><th>Algorithm (OpenPGP code)</th>"
                 + "<th>Created</th><th>Expires</th><th>Flags</th><th>UIDs</th></tr>\n");
         for (KeyIndexResult key : results) {
             sb.append("<tr>");
