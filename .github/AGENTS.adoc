@@ -112,6 +112,60 @@ creates coupling that makes the system hard to test and replace.
 * Return only information the caller could already have known (e.g. the key ID they
   supplied in their request).
 
+== REST error handling (RFC 7807)
+
+The REST (`/rest/`) endpoint family uses `application/problem+json` (RFC 7807) for
+all error responses.  The HKP (`/pks/`) and other non-REST families are unaffected.
+
+=== Key classes
+
+* `ProblemJson` — immutable record carrying the RFC 7807 fields:
+  `type`, `title`, `status`, `detail`, `instance` (optional), `correlationId`, `fingerprint` (optional).
+  Serialised to JSON via JSON-B (`JsonbBuilder.create()`) inside the mapper; Johnzon treats
+  `Optional.empty()` as absent, so optional fields are omitted from the response automatically.
+* `Problems` — public JAX-RS resource at `@Path("problems")` (no leading slash, consistent with
+  other endpoints).  Each logical exception group has its own `@GET` method returning a short
+  `text/plain` description page for that problem type.  When adding a new `KeyServerException`
+  subtype group, add a corresponding `@GET` method here _and_ a slug mapping in
+  `KeyServerExceptionMapper`.
+* `KeyServerExceptionMapper` (REST) — injects `@Context @Nullable UriInfo uriInfo`.
+  Builds the `type` URI as `{baseUri}problems/{slug}` via `uriInfo.getBaseUriBuilder()`.
+  Falls back to `urn:keyserver:error:{slug}` when `uriInfo` is `null` (e.g. unit tests).
+
+=== Problem slug mapping
+
+[cols="1,1,1"]
+|===
+|Exception |Slug |HTTP status
+
+|`KeyNotFoundException`
+|`key-not-found`
+|404
+
+|`DuplicateKeyException`
+|`duplicate-key`
+|200
+
+|`KeyParsingException`
+|`key-parsing`
+|400
+
+|`KeyValidationException` (all subclasses)
+|`key-validation`
+|400
+
+|`VerificationException` (all subclasses)
+|`verification-error`
+|400
+|===
+
+=== Test infrastructure
+
+The `web/rest` module adds `org.apache.johnzon:johnzon-jsonb` (test scope) as the
+JSON-B implementation so unit tests can serialise and assert on JSON bodies.
+`johnzon-jsonb` transitively provides the JSON-P implementation as well.
+Apache CXF (`cxf-rt-frontend-jaxrs`, test scope) provides JAX-RS type support.
+
 == Transactions
 
 * Wrap each command at the `CommandService` level with `@Transactional`, not just
@@ -164,11 +218,19 @@ Every mutating command is wrapped in a BTX lifecycle:
 [NOTE]
 ====
 *Exception — immutable DTO record components:* `Optional<T>` is acceptable as a record _component_ when all of the
-following hold: (a) the record is an immutable value-type DTO that is never persisted or serialized to an external
-format, (b) the optionality is an intrinsic part of the domain concept (e.g. `expirationTime` that may genuinely be
-absent), and (c) there is no natural sentinel or null-object alternative.
+following hold: (a) the record is an immutable value-type DTO that is never persisted, (b) the optionality is an
+intrinsic part of the domain concept (e.g. `expirationTime` that may genuinely be absent), and (c) there is no
+natural sentinel or null-object alternative.
 `KeyIndexResult` and `UidIndexEntry` satisfy these criteria — they are transient application-layer DTOs consumed and
 discarded within a single request, never mapped by JPA or written to JSON/XML.
+
+A second carve-out applies to *JSON-B serialization DTOs*: `Optional<T>` is also acceptable for record components
+that represent optional RFC 7807 / JSON fields where the absent case must be omitted from the output.  The
+Jakarta JSON-B specification mandates that `Optional.empty()` is serialized as absent (field omitted) and
+`Optional.of(v)` as the unwrapped value — this is not implementation-specific.  In production the container
+supplies a compliant JSON-B implementation via the `provided` `jakarta.json.bind-api` dependency; tests use
+Johnzon as the test-scope implementation.  Use this only in records annotated for JSON-B serialization
+(e.g. `ProblemJson`) and never in JPA entities or JAXB-mapped classes.
 JPA entity fields and any class with `@XmlRootElement`, `@JsonSerialize`, or similar must still not use `Optional`.
 ====
 * Avoid mixing docs, refactors, and behavior changes unless the task needs it.
