@@ -112,6 +112,57 @@ creates coupling that makes the system hard to test and replace.
 * Return only information the caller could already have known (e.g. the key ID they
   supplied in their request).
 
+== REST error handling (RFC 7807)
+
+The REST (`/rest/`) endpoint family uses `application/problem+json` (RFC 7807) for
+all error responses.  The HKP (`/pks/`) and other non-REST families are unaffected.
+
+=== Key classes
+
+* `ProblemJson` — immutable record carrying the RFC 7807 fields:
+  `type`, `title`, `status`, `detail`, `instance`, `correlationId`.
+  Serialised to a JSON string via JSON-P inside the mapper (no JSON-B annotations needed).
+* `Problems` — JAX-RS resource at `@Path("/problems")`.
+  Each logical exception group has its own `@GET` method returning an HTML description
+  page for that problem type.  When adding a new `KeyServerException` subtype group,
+  add a corresponding `@GET` method here _and_ a slug mapping in `KeyServerExceptionMapper`.
+* `KeyServerExceptionMapper` (REST) — injects `@Context @Nullable UriInfo uriInfo`.
+  Builds the `type` URI as `{baseUri}/problems/{slug}` via `uriInfo.getBaseUriBuilder()`.
+  Falls back to `urn:keyserver:error:{slug}` when `uriInfo` is `null` (e.g. unit tests).
+
+=== Problem slug mapping
+
+[cols="1,1,1"]
+|===
+|Exception |Slug |HTTP status
+
+|`KeyNotFoundException`
+|`key-not-found`
+|404
+
+|`DuplicateKeyException`
+|`duplicate-key`
+|200
+
+|`KeyParsingException`
+|`key-parsing`
+|400
+
+|`KeyValidationException` (all subclasses)
+|`key-validation`
+|400
+
+|`VerificationException` (all subclasses)
+|`verification-error`
+|400
+|===
+
+=== Test infrastructure
+
+The `web/rest` module adds `org.apache.johnzon:johnzon-core` (test scope) as the
+JSON-P implementation so unit tests can round-trip and assert on JSON bodies.
+Apache CXF (`cxf-rt-frontend-jaxrs`, test scope) provides JAX-RS type support.
+
 == Transactions
 
 * Wrap each command at the `CommandService` level with `@Transactional`, not just
