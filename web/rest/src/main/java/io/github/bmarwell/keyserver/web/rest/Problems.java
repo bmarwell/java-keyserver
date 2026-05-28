@@ -31,49 +31,66 @@ class Problems {
     @Path("key-not-found")
     @Produces(MediaType.TEXT_PLAIN)
     public Response keyNotFound() {
-        return Response.ok(
-                        "Key Not Found\n\nNo key matching the supplied identifier exists in this keyserver's published store.\n\nHTTP status: 404 Not Found",
-                        MediaType.TEXT_PLAIN)
-                .build();
+        return Response.ok("""
+                        Key Not Found
+
+                        No key matching the supplied identifier exists in this keyserver's published store.
+
+                        HTTP status: 404 Not Found
+                        """, MediaType.TEXT_PLAIN).build();
     }
 
     @GET
     @Path("duplicate-key")
     @Produces(MediaType.TEXT_PLAIN)
     public Response duplicateKey() {
-        return Response.ok(
-                        "Duplicate Key\n\nThe submitted key is already present in the published keystore. The existing record is preserved.\n\nHTTP status: 200 OK",
-                        MediaType.TEXT_PLAIN)
-                .build();
+        return Response.ok("""
+                        Duplicate Key
+
+                        The submitted key is already present in the published keystore. The existing record is preserved.
+
+                        HTTP status: 200 OK
+                        """, MediaType.TEXT_PLAIN).build();
     }
 
     @GET
     @Path("key-parsing")
     @Produces(MediaType.TEXT_PLAIN)
     public Response keyParsing() {
-        return Response.ok(
-                        "Key Parsing Error\n\nThe submitted key material could not be parsed as a valid OpenPGP key.\n\nHTTP status: 400 Bad Request",
-                        MediaType.TEXT_PLAIN)
-                .build();
+        return Response.ok("""
+                        Key Parsing Error
+
+                        The submitted key material could not be parsed as a valid OpenPGP key.
+
+                        HTTP status: 400 Bad Request
+                        """, MediaType.TEXT_PLAIN).build();
     }
 
     @GET
     @Path("key-validation")
     @Produces(MediaType.TEXT_PLAIN)
     public Response keyValidation() {
-        return Response.ok(
-                        "Key Validation Failed\n\nThe submitted key did not pass the keyserver's validation rules (e.g. expired, revoked, no usable user IDs, unsupported algorithm).\n\nHTTP status: 400 Bad Request",
-                        MediaType.TEXT_PLAIN)
-                .build();
+        return Response.ok("""
+                        Key Validation Failed
+
+                        The submitted key did not pass the keyserver's validation rules \
+                        (e.g. expired, revoked, no usable user IDs, unsupported algorithm).
+
+                        HTTP status: 400 Bad Request
+                        """, MediaType.TEXT_PLAIN).build();
     }
 
     @GET
     @Path("verification-error")
     @Produces(MediaType.TEXT_PLAIN)
     public Response verificationError() {
-        return Response.ok(
-                        "Verification Error\n\nThe email-verification request could not be completed. The token may have expired or may not be valid for this keyserver.\n\nHTTP status: 400 Bad Request",
-                        MediaType.TEXT_PLAIN)
-                .build();
+        return Response.ok("""
+                        Verification Error
+
+                        The email-verification request could not be completed. \
+                        The token may have expired or may not be valid for this keyserver.
+
+                        HTTP status: 400 Bad Request
+                        """, MediaType.TEXT_PLAIN).build();
     }
 }
