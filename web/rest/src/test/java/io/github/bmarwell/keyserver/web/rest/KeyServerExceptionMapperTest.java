@@ -34,7 +34,8 @@ class KeyServerExceptionMapperTest {
 
     @BeforeEach
     void setUp() {
-        mapper.setUriInfo(uriInfoFor(BASE_URI, BASE_URI + "some-repo/key/abc"));
+        this.mapper.init();
+        this.mapper.setUriInfo(uriInfoFor(BASE_URI, BASE_URI + "some-repo/key/abc"));
     }
 
     // -------------------------------------------------------------------------
@@ -47,7 +48,7 @@ class KeyServerExceptionMapperTest {
         KeyNotFoundException ex = new KeyNotFoundException("not there");
 
         // when
-        Response response = mapper.toResponse(ex);
+        Response response = this.mapper.toResponse(ex);
 
         // then
         assertThat(response.getStatus())
@@ -61,7 +62,7 @@ class KeyServerExceptionMapperTest {
         DuplicateKeyException ex = new DuplicateKeyException("already stored", fingerprint("abc123"));
 
         // when
-        Response response = mapper.toResponse(ex);
+        Response response = this.mapper.toResponse(ex);
 
         // then
         assertThat(response.getStatus())
@@ -75,7 +76,7 @@ class KeyServerExceptionMapperTest {
         KeyParsingException ex = new KeyParsingException("bad armor");
 
         // when
-        Response response = mapper.toResponse(ex);
+        Response response = this.mapper.toResponse(ex);
 
         // then
         assertThat(response.getStatus()).isEqualTo(400);
@@ -87,7 +88,7 @@ class KeyServerExceptionMapperTest {
         TooManyVerifiableUidsException ex = new TooManyVerifiableUidsException("too many");
 
         // when
-        Response response = mapper.toResponse(ex);
+        Response response = this.mapper.toResponse(ex);
 
         // then
         assertThat(response.getStatus()).isEqualTo(400);
@@ -99,7 +100,7 @@ class KeyServerExceptionMapperTest {
         TokenExpiredException ex = new TokenExpiredException("expired");
 
         // when
-        Response response = mapper.toResponse(ex);
+        Response response = this.mapper.toResponse(ex);
 
         // then
         assertThat(response.getStatus()).isEqualTo(400);
@@ -115,7 +116,7 @@ class KeyServerExceptionMapperTest {
         KeyNotFoundException ex = new KeyNotFoundException("missing");
 
         // when
-        Response response = mapper.toResponse(ex);
+        Response response = this.mapper.toResponse(ex);
 
         // then
         assertThat(response.getHeaderString("Content-Type"))
@@ -129,7 +130,7 @@ class KeyServerExceptionMapperTest {
         KeyNotFoundException ex = new KeyNotFoundException("missing");
 
         // when
-        Response response = mapper.toResponse(ex);
+        Response response = this.mapper.toResponse(ex);
 
         // then
         assertThat(response.getHeaderString("X-Correlation-ID"))
@@ -147,7 +148,7 @@ class KeyServerExceptionMapperTest {
         KeyNotFoundException ex = new KeyNotFoundException("missing");
 
         // when
-        JsonObject body = parseBody(mapper.toResponse(ex));
+        JsonObject body = parseBody(this.mapper.toResponse(ex));
 
         // then
         assertThat(body.containsKey("type"))
@@ -176,7 +177,7 @@ class KeyServerExceptionMapperTest {
         KeyNotFoundException ex = new KeyNotFoundException("missing");
 
         // when
-        JsonObject body = parseBody(mapper.toResponse(ex));
+        JsonObject body = parseBody(this.mapper.toResponse(ex));
 
         // then
         assertThat(body.getString("type"))
@@ -188,11 +189,11 @@ class KeyServerExceptionMapperTest {
     @Test
     void body_typeUriUsesUrnFallbackWhenUriInfoIsNull() {
         // given
-        mapper.setUriInfo(null);
+        this.mapper.setUriInfo(null);
         KeyNotFoundException ex = new KeyNotFoundException("missing");
 
         // when
-        JsonObject body = parseBody(mapper.toResponse(ex));
+        JsonObject body = parseBody(this.mapper.toResponse(ex));
 
         // then
         assertThat(body.getString("type"))
@@ -209,7 +210,7 @@ class KeyServerExceptionMapperTest {
         KeyNotFoundException ex = new KeyNotFoundException("missing");
 
         // when
-        JsonObject body = parseBody(mapper.toResponse(ex));
+        JsonObject body = parseBody(this.mapper.toResponse(ex));
 
         // then
         assertThat(body.getString("title"))
@@ -223,7 +224,7 @@ class KeyServerExceptionMapperTest {
         KeyNotFoundException ex = new KeyNotFoundException("missing");
 
         // when
-        JsonObject body = parseBody(mapper.toResponse(ex));
+        JsonObject body = parseBody(this.mapper.toResponse(ex));
 
         // then
         assertThat(body.getInt("status")).isEqualTo(404);
@@ -235,7 +236,7 @@ class KeyServerExceptionMapperTest {
         KeyNotFoundException ex = new KeyNotFoundException("super sensitive internal message");
 
         // when
-        JsonObject body = parseBody(mapper.toResponse(ex));
+        JsonObject body = parseBody(this.mapper.toResponse(ex));
 
         // then
         assertThat(body.getString("detail"))
@@ -249,7 +250,7 @@ class KeyServerExceptionMapperTest {
         KeyNotFoundException ex = new KeyNotFoundException("missing");
 
         // when
-        JsonObject body = parseBody(mapper.toResponse(ex));
+        JsonObject body = parseBody(this.mapper.toResponse(ex));
 
         // then
         assertThat(body.getString("instance"))
@@ -263,7 +264,7 @@ class KeyServerExceptionMapperTest {
         KeyNotFoundException ex = new KeyNotFoundException("missing");
 
         // when
-        JsonObject body = parseBody(mapper.toResponse(ex));
+        JsonObject body = parseBody(this.mapper.toResponse(ex));
 
         // then
         assertThat(body.getString("correlationId"))
@@ -278,7 +279,7 @@ class KeyServerExceptionMapperTest {
         DuplicateKeyException ex = new DuplicateKeyException("already present", fingerprint(fpValue));
 
         // when
-        JsonObject body = parseBody(mapper.toResponse(ex));
+        JsonObject body = parseBody(this.mapper.toResponse(ex));
 
         // then
         assertThat(body.getString("fingerprint"))
@@ -292,7 +293,7 @@ class KeyServerExceptionMapperTest {
         KeyNotFoundException ex = new KeyNotFoundException("missing without fingerprint");
 
         // when
-        JsonObject body = parseBody(mapper.toResponse(ex));
+        JsonObject body = parseBody(this.mapper.toResponse(ex));
 
         // then
         assertThat(body.containsKey("fingerprint"))

@@ -17,7 +17,7 @@ class ProblemsTest {
     @Test
     void keyNotFound_returns200WithPlainText() {
         // given / when
-        Response response = problems.keyNotFound();
+        Response response = this.problems.keyNotFound();
 
         // then
         assertThat(response.getStatus()).isEqualTo(200);
@@ -30,7 +30,7 @@ class ProblemsTest {
     @Test
     void duplicateKey_returns200WithPlainText() {
         // given / when
-        Response response = problems.duplicateKey();
+        Response response = this.problems.duplicateKey();
 
         // then
         assertThat(response.getStatus()).isEqualTo(200);
@@ -43,7 +43,7 @@ class ProblemsTest {
     @Test
     void keyParsing_returns200WithPlainText() {
         // given / when
-        Response response = problems.keyParsing();
+        Response response = this.problems.keyParsing();
 
         // then
         assertThat(response.getStatus()).isEqualTo(200);
@@ -56,7 +56,7 @@ class ProblemsTest {
     @Test
     void keyValidation_returns200WithPlainText() {
         // given / when
-        Response response = problems.keyValidation();
+        Response response = this.problems.keyValidation();
 
         // then
         assertThat(response.getStatus()).isEqualTo(200);
@@ -69,7 +69,7 @@ class ProblemsTest {
     @Test
     void verificationError_returns200WithPlainText() {
         // given / when
-        Response response = problems.verificationError();
+        Response response = this.problems.verificationError();
 
         // then
         assertThat(response.getStatus()).isEqualTo(200);

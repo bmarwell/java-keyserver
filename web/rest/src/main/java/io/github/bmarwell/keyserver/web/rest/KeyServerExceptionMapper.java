@@ -11,6 +11,8 @@ import io.github.bmarwell.keyserver.application.api.ex.KeyParsingException;
 import io.github.bmarwell.keyserver.application.api.ex.KeyServerException;
 import io.github.bmarwell.keyserver.application.api.ex.KeyValidationException;
 import io.github.bmarwell.keyserver.application.api.ex.VerificationException;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import jakarta.json.bind.Jsonb;
 import jakarta.json.bind.JsonbBuilder;
 import jakarta.ws.rs.core.Context;
@@ -39,11 +41,29 @@ public class KeyServerExceptionMapper implements ExceptionMapper<KeyServerExcept
     static final String PROBLEM_JSON_MEDIA_TYPE = "application/problem+json";
 
     private static final Logger LOG = Logger.getLogger(KeyServerExceptionMapper.class.getName());
-    private static final Jsonb JSONB = JsonbBuilder.create();
 
     @Context
     @Nullable
-    UriInfo uriInfo;
+    private UriInfo uriInfo;
+
+    @Nullable
+    private Jsonb jsonb;
+
+    @PostConstruct
+    void init() {
+        this.jsonb = JsonbBuilder.create();
+    }
+
+    @PreDestroy
+    void destroy() {
+        if (this.jsonb != null) {
+            try {
+                this.jsonb.close();
+            } catch (Exception ex) {
+                LOG.log(Level.WARNING, "Failed to close Jsonb instance", ex);
+            }
+        }
+    }
 
     @Override
     public Response toResponse(KeyServerException ex) {
@@ -66,7 +86,7 @@ public class KeyServerExceptionMapper implements ExceptionMapper<KeyServerExcept
 
         return Response.status(status)
                 .header("X-Correlation-ID", ex.getCorrelationId())
-                .entity(JSONB.toJson(problem))
+                .entity(this.jsonb.toJson(problem))
                 .type(PROBLEM_JSON_MEDIA_TYPE)
                 .build();
     }

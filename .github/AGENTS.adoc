@@ -218,11 +218,17 @@ Every mutating command is wrapped in a BTX lifecycle:
 [NOTE]
 ====
 *Exception — immutable DTO record components:* `Optional<T>` is acceptable as a record _component_ when all of the
-following hold: (a) the record is an immutable value-type DTO that is never persisted or serialized to an external
-format, (b) the optionality is an intrinsic part of the domain concept (e.g. `expirationTime` that may genuinely be
-absent), and (c) there is no natural sentinel or null-object alternative.
+following hold: (a) the record is an immutable value-type DTO that is never persisted, (b) the optionality is an
+intrinsic part of the domain concept (e.g. `expirationTime` that may genuinely be absent), and (c) there is no
+natural sentinel or null-object alternative.
 `KeyIndexResult` and `UidIndexEntry` satisfy these criteria — they are transient application-layer DTOs consumed and
 discarded within a single request, never mapped by JPA or written to JSON/XML.
+
+A second carve-out applies to *JSON-B serialization DTOs*: `Optional<T>` is also acceptable for record components
+that represent optional RFC 7807 / JSON fields where the absent case must be omitted from the output.  Johnzon
+(the JSON-B implementation used in tests and in production) serializes `Optional.empty()` as absent (field
+omitted) and `Optional.of(v)` as the unwrapped value.  Use this only in records annotated for JSON-B serialization
+(e.g. `ProblemJson`) and never in JPA entities or JAXB-mapped classes.
 JPA entity fields and any class with `@XmlRootElement`, `@JsonSerialize`, or similar must still not use `Optional`.
 ====
 * Avoid mixing docs, refactors, and behavior changes unless the task needs it.
