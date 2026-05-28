@@ -34,6 +34,9 @@ class ProblemsTest {
 
         // then
         assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(response.getHeaderString("Content-Type"))
+                .as("Problems pages must be served as text/plain")
+                .startsWith("text/plain");
         assertThat((String) response.getEntity()).contains("Duplicate Key").contains("200");
     }
 
@@ -44,6 +47,9 @@ class ProblemsTest {
 
         // then
         assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(response.getHeaderString("Content-Type"))
+                .as("Problems pages must be served as text/plain")
+                .startsWith("text/plain");
         assertThat((String) response.getEntity()).contains("Key Parsing").contains("400");
     }
 
@@ -54,6 +60,9 @@ class ProblemsTest {
 
         // then
         assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(response.getHeaderString("Content-Type"))
+                .as("Problems pages must be served as text/plain")
+                .startsWith("text/plain");
         assertThat((String) response.getEntity()).contains("Key Validation").contains("400");
     }
 
@@ -64,6 +73,9 @@ class ProblemsTest {
 
         // then
         assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(response.getHeaderString("Content-Type"))
+                .as("Problems pages must be served as text/plain")
+                .startsWith("text/plain");
         assertThat((String) response.getEntity()).contains("Verification").contains("400");
     }
 }

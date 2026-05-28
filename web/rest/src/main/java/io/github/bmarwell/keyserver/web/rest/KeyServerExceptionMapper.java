@@ -36,7 +36,7 @@ import org.jspecify.annotations.Nullable;
 @Provider
 public class KeyServerExceptionMapper implements ExceptionMapper<KeyServerException> {
 
-    static final String PROBLEM_JSON_MEDIA_TYPE = "application/problem+json;charset=utf-8";
+    static final String PROBLEM_JSON_MEDIA_TYPE = "application/problem+json";
 
     private static final Logger LOG = Logger.getLogger(KeyServerExceptionMapper.class.getName());
     private static final Jsonb JSONB = JsonbBuilder.create();
