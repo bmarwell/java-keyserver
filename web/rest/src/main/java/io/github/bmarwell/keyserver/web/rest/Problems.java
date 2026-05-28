@@ -25,7 +25,7 @@ import jakarta.ws.rs.core.Response;
 /// </ol>
 @Path("/problems")
 @ApplicationScoped
-class Problems {
+public class Problems {
 
     @GET
     @Path("key-not-found")

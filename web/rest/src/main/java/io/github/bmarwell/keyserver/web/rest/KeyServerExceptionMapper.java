@@ -11,13 +11,15 @@ import io.github.bmarwell.keyserver.application.api.ex.KeyParsingException;
 import io.github.bmarwell.keyserver.application.api.ex.KeyServerException;
 import io.github.bmarwell.keyserver.application.api.ex.KeyValidationException;
 import io.github.bmarwell.keyserver.application.api.ex.VerificationException;
-import jakarta.json.Json;
+import jakarta.json.bind.Jsonb;
+import jakarta.json.bind.JsonbBuilder;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 import jakarta.ws.rs.ext.ExceptionMapper;
 import jakarta.ws.rs.ext.Provider;
 import java.net.URI;
+import java.util.Optional;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.jspecify.annotations.Nullable;
@@ -37,6 +39,7 @@ public class KeyServerExceptionMapper implements ExceptionMapper<KeyServerExcept
     static final String PROBLEM_JSON_MEDIA_TYPE = "application/problem+json;charset=utf-8";
 
     private static final Logger LOG = Logger.getLogger(KeyServerExceptionMapper.class.getName());
+    private static final Jsonb JSONB = JsonbBuilder.create();
 
     @Context
     @Nullable
@@ -54,24 +57,16 @@ public class KeyServerExceptionMapper implements ExceptionMapper<KeyServerExcept
 
         String slug = problemSlug(ex);
         String typeUri = buildTypeUri(slug);
-        String instanceUri = this.uriInfo != null ? this.uriInfo.getRequestUri().toString() : "";
+        Optional<String> instanceUri =
+                this.uriInfo != null ? Optional.of(this.uriInfo.getRequestUri().toString()) : Optional.empty();
+        Optional<String> fingerprint = ex.getFingerprint().map(fp -> fp.value());
 
-        ProblemJson problem =
-                new ProblemJson(typeUri, titleFor(status), status, detailFor(ex), instanceUri, ex.getCorrelationId());
-
-        var bodyBuilder = Json.createObjectBuilder()
-                .add("type", problem.type())
-                .add("title", problem.title())
-                .add("status", problem.status())
-                .add("detail", problem.detail())
-                .add("instance", problem.instance())
-                .add("correlationId", problem.correlationId());
-
-        ex.getFingerprint().ifPresent(fp -> bodyBuilder.add("fingerprint", fp.value()));
+        ProblemJson problem = new ProblemJson(
+                typeUri, titleFor(status), status, detailFor(ex), instanceUri, ex.getCorrelationId(), fingerprint);
 
         return Response.status(status)
                 .header("X-Correlation-ID", ex.getCorrelationId())
-                .entity(bodyBuilder.build().toString())
+                .entity(JSONB.toJson(problem))
                 .type(PROBLEM_JSON_MEDIA_TYPE)
                 .build();
     }
@@ -125,7 +120,7 @@ public class KeyServerExceptionMapper implements ExceptionMapper<KeyServerExcept
     }
 
     // CDI-context-friendly setter for unit testing without a container.
-    void setUriInfo(UriInfo uriInfo) {
+    void setUriInfo(@Nullable UriInfo uriInfo) {
         this.uriInfo = uriInfo;
     }
 }

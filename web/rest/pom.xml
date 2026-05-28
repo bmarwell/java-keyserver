@@ -27,6 +27,11 @@
       <scope>provided</scope>
     </dependency>
     <dependency>
+      <groupId>jakarta.json.bind</groupId>
+      <artifactId>jakarta.json.bind-api</artifactId>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
       <groupId>jakarta.enterprise</groupId>
       <artifactId>jakarta.enterprise.cdi-api</artifactId>
       <scope>provided</scope>
@@ -65,7 +70,7 @@
     </dependency>
     <dependency>
       <groupId>org.apache.johnzon</groupId>
-      <artifactId>johnzon-core</artifactId>
+      <artifactId>johnzon-jsonb</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>

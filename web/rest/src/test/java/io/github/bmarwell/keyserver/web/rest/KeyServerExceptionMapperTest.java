@@ -154,16 +154,16 @@ class KeyServerExceptionMapperTest {
                 .as("RFC 7807 requires 'type' field")
                 .isTrue();
         assertThat(body.containsKey("title"))
-                .as("RFC 7807 requires 'title' field")
+                .as("this keyserver includes 'title' field (strongly recommended by RFC 7807)")
                 .isTrue();
         assertThat(body.containsKey("status"))
-                .as("RFC 7807 requires 'status' field")
+                .as("this keyserver includes 'status' field (strongly recommended by RFC 7807)")
                 .isTrue();
         assertThat(body.containsKey("detail"))
-                .as("RFC 7807 requires 'detail' field")
+                .as("this keyserver includes 'detail' field (optional per RFC 7807)")
                 .isTrue();
         assertThat(body.containsKey("instance"))
-                .as("RFC 7807 requires 'instance' field")
+                .as("instance must be included when the request URI is available")
                 .isTrue();
         assertThat(body.containsKey("correlationId"))
                 .as("extension field 'correlationId' must be present")
@@ -198,6 +198,9 @@ class KeyServerExceptionMapperTest {
         assertThat(body.getString("type"))
                 .as("fallback type when UriInfo is absent must be a urn:keyserver:error URN")
                 .isEqualTo("urn:keyserver:error:key-not-found");
+        assertThat(body.containsKey("instance"))
+                .as("instance must be absent when UriInfo is not available")
+                .isFalse();
     }
 
     @Test
