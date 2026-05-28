@@ -11,7 +11,6 @@ import io.github.bmarwell.keyserver.application.api.ex.KeyParsingException;
 import io.github.bmarwell.keyserver.application.api.ex.KeyServerException;
 import io.github.bmarwell.keyserver.application.api.ex.KeyValidationException;
 import io.github.bmarwell.keyserver.application.api.ex.VerificationException;
-import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import jakarta.json.bind.Jsonb;
 import jakarta.json.bind.JsonbBuilder;
@@ -46,22 +45,14 @@ public class KeyServerExceptionMapper implements ExceptionMapper<KeyServerExcept
     @Nullable
     private UriInfo uriInfo;
 
-    @Nullable
-    private Jsonb jsonb;
-
-    @PostConstruct
-    void init() {
-        this.jsonb = JsonbBuilder.create();
-    }
+    private final Jsonb jsonb = JsonbBuilder.create();
 
     @PreDestroy
     void destroy() {
-        if (this.jsonb != null) {
-            try {
-                this.jsonb.close();
-            } catch (Exception ex) {
-                LOG.log(Level.WARNING, "Failed to close Jsonb instance", ex);
-            }
+        try {
+            this.jsonb.close();
+        } catch (Exception ex) {
+            LOG.log(Level.WARNING, "Failed to close Jsonb instance", ex);
         }
     }
 

@@ -21,7 +21,7 @@ import java.util.Optional;
 /// - `fingerprint` — key fingerprint carried by the exception, if any. JSON-B omits the field when empty.
 ///
 /// Serialised to JSON via JSON-B inside {@link KeyServerExceptionMapper}.
-/// JSON-B (Johnzon) treats {@code Optional.empty()} as absent and omits the field entirely —
+/// The Jakarta JSON-B specification treats {@code Optional.empty()} as absent and omits the field entirely —
 /// no manual null-checks or annotations are needed.
 ///
 /// Note: {@code Optional} is used for {@code instance} and {@code fingerprint} because they represent

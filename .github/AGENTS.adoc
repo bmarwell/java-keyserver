@@ -225,9 +225,11 @@ natural sentinel or null-object alternative.
 discarded within a single request, never mapped by JPA or written to JSON/XML.
 
 A second carve-out applies to *JSON-B serialization DTOs*: `Optional<T>` is also acceptable for record components
-that represent optional RFC 7807 / JSON fields where the absent case must be omitted from the output.  Johnzon
-(the JSON-B implementation used in tests and in production) serializes `Optional.empty()` as absent (field
-omitted) and `Optional.of(v)` as the unwrapped value.  Use this only in records annotated for JSON-B serialization
+that represent optional RFC 7807 / JSON fields where the absent case must be omitted from the output.  The
+Jakarta JSON-B specification mandates that `Optional.empty()` is serialized as absent (field omitted) and
+`Optional.of(v)` as the unwrapped value — this is not implementation-specific.  In production the container
+supplies a compliant JSON-B implementation via the `provided` `jakarta.json.bind-api` dependency; tests use
+Johnzon as the test-scope implementation.  Use this only in records annotated for JSON-B serialization
 (e.g. `ProblemJson`) and never in JPA entities or JAXB-mapped classes.
 JPA entity fields and any class with `@XmlRootElement`, `@JsonSerialize`, or similar must still not use `Optional`.
 ====

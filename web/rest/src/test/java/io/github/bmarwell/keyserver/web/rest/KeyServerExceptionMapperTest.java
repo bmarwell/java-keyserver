@@ -34,7 +34,6 @@ class KeyServerExceptionMapperTest {
 
     @BeforeEach
     void setUp() {
-        this.mapper.init();
         this.mapper.setUriInfo(uriInfoFor(BASE_URI, BASE_URI + "some-repo/key/abc"));
     }
 
