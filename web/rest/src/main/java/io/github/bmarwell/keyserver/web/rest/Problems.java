@@ -23,7 +23,7 @@ import jakarta.ws.rs.core.Response;
 ///   <li>Add a {@code @GET} method here with an appropriate {@code @Path} slug.</li>
 ///   <li>Add the corresponding slug mapping in {@link KeyServerExceptionMapper#problemSlug}.</li>
 /// </ol>
-@Path("/problems")
+@Path("problems")
 @ApplicationScoped
 public class Problems {
 

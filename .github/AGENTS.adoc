@@ -120,14 +120,16 @@ all error responses.  The HKP (`/pks/`) and other non-REST families are unaffect
 === Key classes
 
 * `ProblemJson` — immutable record carrying the RFC 7807 fields:
-  `type`, `title`, `status`, `detail`, `instance`, `correlationId`.
-  Serialised to a JSON string via JSON-P inside the mapper (no JSON-B annotations needed).
-* `Problems` — JAX-RS resource at `@Path("/problems")`.
-  Each logical exception group has its own `@GET` method returning an HTML description
-  page for that problem type.  When adding a new `KeyServerException` subtype group,
-  add a corresponding `@GET` method here _and_ a slug mapping in `KeyServerExceptionMapper`.
+  `type`, `title`, `status`, `detail`, `instance` (optional), `correlationId`, `fingerprint` (optional).
+  Serialised to JSON via JSON-B (`JsonbBuilder.create()`) inside the mapper; Johnzon treats
+  `Optional.empty()` as absent, so optional fields are omitted from the response automatically.
+* `Problems` — public JAX-RS resource at `@Path("problems")` (no leading slash, consistent with
+  other endpoints).  Each logical exception group has its own `@GET` method returning a short
+  `text/plain` description page for that problem type.  When adding a new `KeyServerException`
+  subtype group, add a corresponding `@GET` method here _and_ a slug mapping in
+  `KeyServerExceptionMapper`.
 * `KeyServerExceptionMapper` (REST) — injects `@Context @Nullable UriInfo uriInfo`.
-  Builds the `type` URI as `{baseUri}/problems/{slug}` via `uriInfo.getBaseUriBuilder()`.
+  Builds the `type` URI as `{baseUri}problems/{slug}` via `uriInfo.getBaseUriBuilder()`.
   Falls back to `urn:keyserver:error:{slug}` when `uriInfo` is `null` (e.g. unit tests).
 
 === Problem slug mapping
@@ -159,8 +161,9 @@ all error responses.  The HKP (`/pks/`) and other non-REST families are unaffect
 
 === Test infrastructure
 
-The `web/rest` module adds `org.apache.johnzon:johnzon-core` (test scope) as the
-JSON-P implementation so unit tests can round-trip and assert on JSON bodies.
+The `web/rest` module adds `org.apache.johnzon:johnzon-jsonb` (test scope) as the
+JSON-B implementation so unit tests can serialise and assert on JSON bodies.
+`johnzon-jsonb` transitively provides the JSON-P implementation as well.
 Apache CXF (`cxf-rt-frontend-jaxrs`, test scope) provides JAX-RS type support.
 
 == Transactions
