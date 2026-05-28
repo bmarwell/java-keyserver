@@ -15,20 +15,20 @@ class ProblemsTest {
     private final Problems problems = new Problems();
 
     @Test
-    void keyNotFound_returns200WithHtml() {
+    void keyNotFound_returns200WithPlainText() {
         // given / when
         Response response = problems.keyNotFound();
 
         // then
         assertThat(response.getStatus()).isEqualTo(200);
         assertThat(response.getHeaderString("Content-Type"))
-                .as("Problems pages must be served as text/html")
-                .startsWith("text/html");
+                .as("Problems pages must be served as text/plain")
+                .startsWith("text/plain");
         assertThat((String) response.getEntity()).contains("Key Not Found").contains("404");
     }
 
     @Test
-    void duplicateKey_returns200WithHtml() {
+    void duplicateKey_returns200WithPlainText() {
         // given / when
         Response response = problems.duplicateKey();
 
@@ -38,7 +38,7 @@ class ProblemsTest {
     }
 
     @Test
-    void keyParsing_returns200WithHtml() {
+    void keyParsing_returns200WithPlainText() {
         // given / when
         Response response = problems.keyParsing();
 
@@ -48,7 +48,7 @@ class ProblemsTest {
     }
 
     @Test
-    void keyValidation_returns200WithHtml() {
+    void keyValidation_returns200WithPlainText() {
         // given / when
         Response response = problems.keyValidation();
 
@@ -58,7 +58,7 @@ class ProblemsTest {
     }
 
     @Test
-    void verificationError_returns200WithHtml() {
+    void verificationError_returns200WithPlainText() {
         // given / when
         Response response = problems.verificationError();
 

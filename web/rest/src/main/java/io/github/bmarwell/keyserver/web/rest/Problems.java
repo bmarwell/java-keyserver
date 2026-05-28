@@ -29,99 +29,51 @@ class Problems {
 
     @GET
     @Path("key-not-found")
-    @Produces(MediaType.TEXT_HTML)
+    @Produces(MediaType.TEXT_PLAIN)
     public Response keyNotFound() {
-        return Response.ok("""
-                        <!DOCTYPE html>
-                        <html lang="en">
-                        <head><meta charset="utf-8"><title>Problem: Key Not Found</title></head>
-                        <body>
-                        <h1>Key Not Found</h1>
-                        <p>No key matching the supplied identifier exists in this keyserver's published store.</p>
-                        <dl>
-                          <dt>HTTP status</dt><dd>404 Not Found</dd>
-                        </dl>
-                        </body>
-                        </html>
-                        """, MediaType.TEXT_HTML).build();
+        return Response.ok(
+                        "Key Not Found\n\nNo key matching the supplied identifier exists in this keyserver's published store.\n\nHTTP status: 404 Not Found",
+                        MediaType.TEXT_PLAIN)
+                .build();
     }
 
     @GET
     @Path("duplicate-key")
-    @Produces(MediaType.TEXT_HTML)
+    @Produces(MediaType.TEXT_PLAIN)
     public Response duplicateKey() {
-        return Response.ok("""
-                        <!DOCTYPE html>
-                        <html lang="en">
-                        <head><meta charset="utf-8"><title>Problem: Duplicate Key</title></head>
-                        <body>
-                        <h1>Duplicate Key</h1>
-                        <p>The submitted key is already present in the published keystore.
-                           This is treated as idempotent and the existing record is preserved.</p>
-                        <dl>
-                          <dt>HTTP status</dt><dd>200 OK</dd>
-                        </dl>
-                        </body>
-                        </html>
-                        """, MediaType.TEXT_HTML).build();
+        return Response.ok(
+                        "Duplicate Key\n\nThe submitted key is already present in the published keystore. The existing record is preserved.\n\nHTTP status: 200 OK",
+                        MediaType.TEXT_PLAIN)
+                .build();
     }
 
     @GET
     @Path("key-parsing")
-    @Produces(MediaType.TEXT_HTML)
+    @Produces(MediaType.TEXT_PLAIN)
     public Response keyParsing() {
-        return Response.ok("""
-                        <!DOCTYPE html>
-                        <html lang="en">
-                        <head><meta charset="utf-8"><title>Problem: Key Parsing Error</title></head>
-                        <body>
-                        <h1>Key Parsing Error</h1>
-                        <p>The submitted key material could not be parsed as a valid OpenPGP key.</p>
-                        <dl>
-                          <dt>HTTP status</dt><dd>400 Bad Request</dd>
-                        </dl>
-                        </body>
-                        </html>
-                        """, MediaType.TEXT_HTML).build();
+        return Response.ok(
+                        "Key Parsing Error\n\nThe submitted key material could not be parsed as a valid OpenPGP key.\n\nHTTP status: 400 Bad Request",
+                        MediaType.TEXT_PLAIN)
+                .build();
     }
 
     @GET
     @Path("key-validation")
-    @Produces(MediaType.TEXT_HTML)
+    @Produces(MediaType.TEXT_PLAIN)
     public Response keyValidation() {
-        return Response.ok("""
-                        <!DOCTYPE html>
-                        <html lang="en">
-                        <head><meta charset="utf-8"><title>Problem: Key Validation Failed</title></head>
-                        <body>
-                        <h1>Key Validation Failed</h1>
-                        <p>The submitted key is structurally valid but did not pass the keyserver's
-                           validation rules (e.g. expired, revoked, no usable user IDs, unsupported algorithm).</p>
-                        <dl>
-                          <dt>HTTP status</dt><dd>400 Bad Request</dd>
-                        </dl>
-                        </body>
-                        </html>
-                        """, MediaType.TEXT_HTML).build();
+        return Response.ok(
+                        "Key Validation Failed\n\nThe submitted key did not pass the keyserver's validation rules (e.g. expired, revoked, no usable user IDs, unsupported algorithm).\n\nHTTP status: 400 Bad Request",
+                        MediaType.TEXT_PLAIN)
+                .build();
     }
 
     @GET
     @Path("verification-error")
-    @Produces(MediaType.TEXT_HTML)
+    @Produces(MediaType.TEXT_PLAIN)
     public Response verificationError() {
-        return Response.ok("""
-                        <!DOCTYPE html>
-                        <html lang="en">
-                        <head><meta charset="utf-8"><title>Problem: Verification Error</title></head>
-                        <body>
-                        <h1>Verification Error</h1>
-                        <p>The email-verification request could not be completed.
-                           The token may have expired or may not be valid for this keyserver.</p>
-                        <dl>
-                          <dt>HTTP status</dt><dd>400 Bad Request</dd>
-                        </dl>
-                        </body>
-                        </html>
-                        """, MediaType.TEXT_HTML).build();
+        return Response.ok(
+                        "Verification Error\n\nThe email-verification request could not be completed. The token may have expired or may not be valid for this keyserver.\n\nHTTP status: 400 Bad Request",
+                        MediaType.TEXT_PLAIN)
+                .build();
     }
 }
