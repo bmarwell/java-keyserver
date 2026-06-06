@@ -21,11 +21,28 @@ import java.lang.annotation.Target;
  * <p>After all tests in the class finish, the tables listed in {@link #truncateAfter()}
  * are truncated in a single statement (CASCADE) so the next test class starts clean.
  *
- * <p>Example:
+ * <p><b>Not required:</b> test classes that do not declare {@code @DatabaseSeed} are
+ * perfectly valid. They use the shared PostgreSQL instance as-is. At the start of
+ * a fresh test session the database is empty (schema only, created by Flyway migrations
+ * on Liberty start-up). Tests without seeding must therefore be self-contained: either
+ * they write their own data and assert with flexible matchers (e.g.
+ * {@code isGreaterThanOrEqualTo(1)}), or they assert on data written earlier in the
+ * same session. If strict isolation is needed, add {@code @DatabaseSeed} with an
+ * empty {@link #value()} array to get the automatic truncation without any seed SQL.
+ *
+ * <p>Example with seed SQL:
  * <pre>{@code
  * @DatabaseSeed(value = {"sql/some-keys.sql"}, truncateAfter = {"keys", "uids"})
  * class LookupIT {
  *     // tests here can assume that some-keys.sql data is present
+ * }
+ * }</pre>
+ *
+ * <p>Example with truncation only (no seed SQL):
+ * <pre>{@code
+ * @DatabaseSeed
+ * class IsolatedWriteIT {
+ *     // starts each class with the default tables truncated
  * }
  * }</pre>
  */

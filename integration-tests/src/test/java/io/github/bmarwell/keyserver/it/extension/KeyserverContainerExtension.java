@@ -120,19 +120,38 @@ public class KeyserverContainerExtension implements BeforeAllCallback, AfterAllC
     private static ContainerHolder startContainers() {
         LOG.info("Starting shared keyserver test containers...");
 
+        // Network is tracked in ContainerHolder so it is closed in close() even if
+        // Liberty startup throws after PostgreSQL has already started.
         Network network = Network.newNetwork();
+        PostgreSQLContainer<?> postgres = null;
+        GenericContainer<?> liberty = null;
+        try {
+            postgres = new PostgreSQLContainer<>("postgres:17-alpine")
+                    .withNetwork(network)
+                    .withNetworkAliases(PG_NETWORK_ALIAS)
+                    .withDatabaseName(PG_DATABASE)
+                    .withUsername(PG_USER)
+                    .withPassword(PG_PASSWORD);
 
-        PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:17-alpine")
-                .withNetwork(network)
-                .withNetworkAliases(PG_NETWORK_ALIAS)
-                .withDatabaseName(PG_DATABASE)
-                .withUsername(PG_USER)
-                .withPassword(PG_PASSWORD);
+            postgres.start();
 
-        postgres.start();
-
-        GenericContainer<?> liberty = buildLibertyContainer(network);
-        liberty.start();
+            liberty = buildLibertyContainer(network);
+            liberty.start();
+        } catch (RuntimeException ex) {
+            // Clean up anything that started before the failure.
+            if (liberty != null) {
+                liberty.stop();
+            }
+            if (postgres != null) {
+                postgres.stop();
+            }
+            try {
+                network.close();
+            } catch (Exception closeEx) {
+                ex.addSuppressed(closeEx);
+            }
+            throw ex;
+        }
 
         int libertyPort = liberty.getMappedPort(9080);
         String libertyHost = liberty.getHost();
@@ -143,7 +162,7 @@ public class KeyserverContainerExtension implements BeforeAllCallback, AfterAllC
         LOG.info("Liberty PKS base URL: {}", pksBaseUrl);
         LOG.info("Liberty REST base URL: {}", apiBaseUrl);
 
-        return new ContainerHolder(postgres, liberty, pksBaseUrl, apiBaseUrl);
+        return new ContainerHolder(postgres, liberty, network, pksBaseUrl, apiBaseUrl);
     }
 
     private static GenericContainer<?> buildLibertyContainer(Network network) {
@@ -274,9 +293,17 @@ public class KeyserverContainerExtension implements BeforeAllCallback, AfterAllC
     /**
      * Holds the running containers and their derived URLs. JUnit automatically calls
      * {@link #close()} after all tests in the root context finish.
+     *
+     * <p>The {@link Network} is stored here so it can be closed <em>after</em> both
+     * containers have stopped. With {@code ryuk.disabled=true} nothing else would
+     * remove the dangling network from the Docker/Podman daemon.
      */
     record ContainerHolder(
-            PostgreSQLContainer<?> postgres, GenericContainer<?> liberty, String pksBaseUrl, String apiBaseUrl)
+            PostgreSQLContainer<?> postgres,
+            GenericContainer<?> liberty,
+            Network network,
+            String pksBaseUrl,
+            String apiBaseUrl)
             implements Store.CloseableResource {
 
         KeyserverInstance toKeyserverInstance() {
@@ -294,6 +321,12 @@ public class KeyserverContainerExtension implements BeforeAllCallback, AfterAllC
             this.liberty.stop();
             LOG.info("Stopping PostgreSQL container...");
             this.postgres.stop();
+            LOG.info("Removing shared Docker network...");
+            try {
+                this.network.close();
+            } catch (Exception ex) {
+                LOG.warn("Failed to close Docker network", ex);
+            }
         }
     }
 }

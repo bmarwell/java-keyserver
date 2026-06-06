@@ -7,7 +7,6 @@ package io.github.bmarwell.keyserver.it;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.github.bmarwell.keyserver.it.extension.DatabaseSeed;
 import io.github.bmarwell.keyserver.it.extension.KeyserverAccess;
 import io.github.bmarwell.keyserver.it.extension.KeyserverIntegrationTest;
 import io.github.bmarwell.keyserver.it.support.TestPgpKeyGenerator;
@@ -22,8 +21,8 @@ import java.net.http.HttpResponse.BodyHandlers;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.sql.Statement;
 import org.bouncycastle.openpgp.PGPException;
 import org.junit.jupiter.api.Test;
 
@@ -38,10 +37,12 @@ import org.junit.jupiter.api.Test;
 /// 1. The server responds with {@code 202 Accepted}.
 /// 2. A row appears in {@code verification_queue} for the test email address.
 ///
-/// {@link DatabaseSeed} resets the relevant tables after the class so that
-/// parallel or sequential test classes start with a clean slate.
+/// This class does not declare {@link io.github.bmarwell.keyserver.it.extension.DatabaseSeed}
+/// because the shared PostgreSQL instance starts empty at the beginning of the
+/// test session and the test uses a generated, unique key. Tests that need a
+/// pre-populated database or deterministic cleanup should annotate their class
+/// with {@code @DatabaseSeed}.
 @KeyserverIntegrationTest
-@DatabaseSeed
 class AddKeyIT {
 
     private static final String TEST_EMAIL = "it-generated@example.com";
@@ -60,7 +61,7 @@ class AddKeyIT {
                 .POST(BodyPublishers.ofString(formBody))
                 .build();
 
-        // when
+        // when — HttpClient implements AutoCloseable since Java 21
         HttpResponse<String> response;
         try (HttpClient client = HttpClient.newHttpClient()) {
             response = client.send(request, BodyHandlers.ofString());
@@ -79,12 +80,14 @@ class AddKeyIT {
     }
 
     private static long countVerificationQueueEntriesFor(KeyserverAccess keyserver, String email) {
-        String sql = "SELECT COUNT(*) FROM verification_queue WHERE email = '" + email + "'";
+        String sql = "SELECT COUNT(*) FROM verification_queue WHERE uid_email = ?";
         try (Connection conn =
                         DriverManager.getConnection(keyserver.jdbcUrl(), keyserver.dbUser(), keyserver.dbPassword());
-                Statement stmt = conn.createStatement();
-                ResultSet rs = stmt.executeQuery(sql)) {
-            return rs.next() ? rs.getLong(1) : 0L;
+                PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, email);
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next() ? rs.getLong(1) : 0L;
+            }
         } catch (Exception ex) {
             throw new IllegalStateException("Cannot query verification_queue", ex);
         }

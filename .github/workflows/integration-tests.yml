@@ -5,7 +5,6 @@ name: Integration Tests
 #
 # Triggers:
 #   - Manual run from the GitHub Actions UI (workflow_dispatch)
-#   - Nightly on weekdays at 03:00 UTC
 #   - Push to main that touches integration-test or application code
 
 on:
