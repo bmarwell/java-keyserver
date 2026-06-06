@@ -55,6 +55,7 @@
     <palantir-java-format.version>2.91.0</palantir-java-format.version>
     <flyway.version>12.6.2</flyway.version>
     <testcontainers.version>1.21.0</testcontainers.version>
+    <postgresql.version>42.7.7</postgresql.version>
   </properties>
 
   <dependencyManagement>
@@ -140,6 +141,11 @@
       </dependency>
 
       <!-- 3rd-party -->
+      <dependency>
+        <groupId>org.postgresql</groupId>
+        <artifactId>postgresql</artifactId>
+        <version>${postgresql.version}</version>
+      </dependency>
       <dependency>
         <groupId>org.slf4j</groupId>
         <artifactId>slf4j-api</artifactId>
