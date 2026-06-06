@@ -15,17 +15,6 @@
 
   <name>Java Keyserver :: web :: OpenPGP Keyserver Protocol</name>
 
-  <dependencyManagement>
-    <dependencies>
-      <dependency>
-        <groupId>org.postgresql</groupId>
-        <artifactId>postgresql</artifactId>
-        <version>${postgresql.version}</version>
-        <scope>runtime</scope>
-      </dependency>
-    </dependencies>
-  </dependencyManagement>
-
   <dependencies>
     <dependency>
       <groupId>jakarta.ws.rs</groupId>
@@ -99,6 +88,13 @@
     <dependency>
       <groupId>ch.qos.logback</groupId>
       <artifactId>logback-classic</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+
+    <!-- JDBC driver — resolved by Liberty Maven Plugin's copyDependencies -->
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
       <scope>runtime</scope>
     </dependency>
 

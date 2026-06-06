@@ -82,7 +82,7 @@
     </dependency>
     <!--
       Apache CXF JAX-RS client implementation — test runtime only.
-      CXF 4.1.x targets Jakarta EE 11 (jakarta.ws.rs 4.0).
+      CXF 4.2.x targets Jakarta EE 11 (jakarta.ws.rs 4.0).
       Using CXF here also matches Open Liberty's internal JAX-RS stack.
     -->
     <dependency>
