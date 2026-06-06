@@ -10,15 +10,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.github.bmarwell.keyserver.it.extension.KeyserverAccess;
 import io.github.bmarwell.keyserver.it.extension.KeyserverIntegrationTest;
 import io.github.bmarwell.keyserver.it.support.TestPgpKeyGenerator;
+import jakarta.ws.rs.client.Client;
+import jakarta.ws.rs.client.ClientBuilder;
+import jakarta.ws.rs.client.Entity;
+import jakarta.ws.rs.core.Form;
+import jakarta.ws.rs.core.Response;
 import java.io.IOException;
-import java.net.URI;
-import java.net.URLEncoder;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpRequest.BodyPublishers;
-import java.net.http.HttpResponse;
-import java.net.http.HttpResponse.BodyHandlers;
-import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -28,20 +25,21 @@ import org.junit.jupiter.api.Test;
 
 /// Integration test for the `POST /pks/add` HKP endpoint.
 ///
+/// Uses the JAX-RS {@link Client} API (Apache CXF as runtime implementation) for
+/// consistency with the rest of the application — the same API will be used in
+/// future REST JSON endpoint tests.
+///
 /// A fresh RSA-2048 OpenPGP key is generated at test runtime via
-/// {@link TestPgpKeyGenerator} — no static key file is checked into the
-/// repository.
+/// {@link TestPgpKeyGenerator} — no static key file is checked into the repository.
 ///
-/// The test submits the key and asserts:
-///
+/// Asserts:
 /// 1. The server responds with {@code 202 Accepted}.
-/// 2. A row appears in {@code verification_queue} for the test email address.
+/// 2. A row appears in {@code verification_queue} for the generated email address.
 ///
 /// This class does not declare {@link io.github.bmarwell.keyserver.it.extension.DatabaseSeed}
-/// because the shared PostgreSQL instance starts empty at the beginning of the
-/// test session and the test uses a generated, unique key. Tests that need a
-/// pre-populated database or deterministic cleanup should annotate their class
-/// with {@code @DatabaseSeed}.
+/// because the shared PostgreSQL instance starts empty at the beginning of the test session
+/// and the test uses a generated key. Tests that need a pre-populated database or
+/// deterministic cleanup should annotate their class with {@code @DatabaseSeed}.
 @KeyserverIntegrationTest
 class AddKeyIT {
 
@@ -50,27 +48,22 @@ class AddKeyIT {
 
     @Test
     void add_key_returns_202_and_enqueues_verification_entry(KeyserverAccess keyserver)
-            throws IOException, InterruptedException, PGPException {
+            throws IOException, PGPException {
         // given
         String armoredKey = TestPgpKeyGenerator.generateArmoredPublicKey(TEST_USER_ID);
-        String formBody = "keytext=" + URLEncoder.encode(armoredKey, StandardCharsets.UTF_8);
-        URI endpoint = keyserver.pksBaseUri().resolve("/pks/add");
 
-        HttpRequest request = HttpRequest.newBuilder(endpoint)
-                .header("Content-Type", "application/x-www-form-urlencoded")
-                .POST(BodyPublishers.ofString(formBody))
-                .build();
+        // when — JAX-RS Client: consistent with the application's JAX-RS stack
+        try (Client client = ClientBuilder.newClient()) {
+            Response response = client.target(keyserver.pksBaseUri())
+                    .path("add")
+                    .request()
+                    .post(Entity.form(new Form("keytext", armoredKey)));
 
-        // when — HttpClient implements AutoCloseable since Java 21
-        HttpResponse<String> response;
-        try (HttpClient client = HttpClient.newHttpClient()) {
-            response = client.send(request, BodyHandlers.ofString());
+            // then — HTTP layer
+            assertThat(response.getStatus())
+                    .as("POST /pks/add should respond with 202 Accepted")
+                    .isEqualTo(202);
         }
-
-        // then — HTTP layer
-        assertThat(response.statusCode())
-                .as("POST /pks/add should respond with 202 Accepted")
-                .isEqualTo(202);
 
         // then — persistence layer: one row in verification_queue for the generated email
         long queuedCount = countVerificationQueueEntriesFor(keyserver, TEST_EMAIL);

@@ -70,9 +70,26 @@
     </dependency>
 
     <!--
-      BouncyCastle — used to generate PGP key rings programmatically in tests.
-      We use the pure Bc* API (no Jca*) so no JCE provider registration is needed.
+      JAX-RS Client API — same API used throughout the application for consistency.
+      jakarta.ws.rs-api is managed as "provided" in the root pom (it is supplied by
+      the container at runtime). In the IT module we explicitly declare "test" scope
+      because there is no server container on the classpath here.
     -->
+    <dependency>
+      <groupId>jakarta.ws.rs</groupId>
+      <artifactId>jakarta.ws.rs-api</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!--
+      Apache CXF JAX-RS client implementation — test runtime only.
+      CXF 4.1.x targets Jakarta EE 11 (jakarta.ws.rs 4.0).
+      Using CXF here also matches Open Liberty's internal JAX-RS stack.
+    -->
+    <dependency>
+      <groupId>org.apache.cxf</groupId>
+      <artifactId>cxf-rt-rs-client</artifactId>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>org.bouncycastle</groupId>
       <artifactId>bcprov-jdk18on</artifactId>
