@@ -59,13 +59,17 @@ public final class TestPgpKeyGenerator {
          * user-ID, which is required for the key to be accepted by the server.
          * An empty passphrase (char[0]) means the secret key is unencrypted — fine
          * for ephemeral test keys that are never persisted.
-         * SHA-256 is used for all digest operations (checksum, self-signature, encryption key).
+         *
+         * The 4th argument (checksumCalculator) MUST be SHA-1 per RFC 4880 §5.5.3:
+         * the OpenPGP wire format mandates SHA-1 for secret-key material checksums
+         * and BouncyCastle enforces this at runtime. The certification self-signature
+         * (BcPGPContentSignerBuilder) uses SHA-256.
          */
         PGPKeyRingGenerator ringGen = new PGPKeyRingGenerator(
                 PGPSignature.POSITIVE_CERTIFICATION,
                 pgpKeyPair,
                 userId,
-                digestCalcProvider.get(HashAlgorithmTags.SHA256),
+                digestCalcProvider.get(HashAlgorithmTags.SHA1),
                 null,
                 null,
                 new BcPGPContentSignerBuilder(PGPPublicKey.RSA_GENERAL, HashAlgorithmTags.SHA256),
