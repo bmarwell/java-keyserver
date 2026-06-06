@@ -1,10 +1,13 @@
 = Java Keyserver
 :toc: macro
 
-This is the Java Keyserver project.
-It supports multiple modes of operation and requires a PostgreSQL database.
+A PGP public-key server written in Java, built on Jakarta EE 11 and Open Liberty.
+It accepts keys via the HKP protocol, verifies UIDs by email, and exposes lookup
+via a standards-compatible HKP endpoint. A modern REST/JSON API and additional
+operation modes are in development.
 
 image:https://github.com/bmarwell/java-keyserver/actions/workflows/ci.yml/badge.svg[Maven CI,link=https://github.com/bmarwell/java-keyserver/actions/workflows/ci.yml]
+image:https://github.com/bmarwell/java-keyserver/actions/workflows/integration-tests.yml/badge.svg[Integration Tests,link=https://github.com/bmarwell/java-keyserver/actions/workflows/integration-tests.yml]
 image:https://img.shields.io/badge/License-EUPL--1.2%20OR%20Apache--2.0-blue.svg[License,link=LICENSE]
 image:https://codecov.io/gh/bmarwell/java-keyserver/graph/badge.svg?token=YE6G1L652A[codecov.io,link=https://codecov.io/gh/bmarwell/java-keyserver]
 image:https://img.shields.io/badge/renovate-enabled-brightgreen.svg[Renovate,link=https://renovatebot.com]
@@ -14,8 +17,16 @@ toc::[]
 
 == State of this project
 
-This is in development.
-None of the listed features works as of now.
+Active development.
+The core add → verify → lookup flow is functional end-to-end:
+
+* [x] `POST /pks/add` — accepts an ASCII-armored key, enforces size/subkey limits, enqueues UIDs for verification.
+* [x] `GET /pks/lookup?op=get&search=<email>` — returns the armored public key for any verified UID.
+* [x] UID email-verification flow (confirmation link sent by email, verified on callback).
+* [ ] REST JSON API (`/api/…`) — endpoints scaffolded, not yet wired to application logic.
+* [ ] `op=index` HKP compliance.
+* [ ] Multiple operation modes (local, syncing, mirror, grouping).
+* [ ] Outbound email sending wired to production SMTP.
 
 == License
 
@@ -55,7 +66,7 @@ Similar to nexus/artifactory groups, can group other upstream key servers for re
 === Privacy features
 
 * [ ] Will remove keys after a while (configurable).
-* [ ] Sends mails to UIDs for verification (local repositories only) before they go public.
+* [x] Sends mails to UIDs for verification (local repositories only) before they go public.
 * [ ] Removes signatures which are invalid for longer than one year.
 * [ ] Removes revoked/invalid keys after one year unless re-uploaded.
 
@@ -67,25 +78,146 @@ Similar to nexus/artifactory groups, can group other upstream key servers for re
 * [ ] Exclusion rules for syncing.
 
 
-== Running the project
+== Prerequisites
 
-Prerequisites::
-** Java 21 or higher
-** A recent PostgreSQL database (see below)
-** Apache Maven is included via the wrapper.
+* Java 25 (required — the project targets `--release 25`)
+* A recent PostgreSQL database (see below)
+* Docker *or* Podman (required only for integration tests)
+* Apache Maven is included via the Maven wrapper (`./mvnw`).
 
-.Run PostgreSQL database using containers
+
+== Building
+
 [source,bash]
 ----
-# or docker...
-podman run --name keyserver-db --rm -e POSTGRES_PASSWORD=test1234   -p 5432:5432 postgres
+# Compile + run unit tests
+./mvnw verify
+
+# Build without running tests (faster for packaging)
+./mvnw package -DskipTests
 ----
 
-.Run the pks endpoint application
+
+== Running locally
+
+.Start a PostgreSQL database
 [source,bash]
 ----
-KEYSERVER_DB_PASSWORD=test1234 mvn package -pl web/openpgp-keyserver-protocol -am liberty:dev
+# Podman (rootless)
+podman run --name keyserver-db --rm \
+  -e POSTGRES_PASSWORD=keyserver \
+  -e POSTGRES_USER=keyserver \
+  -e POSTGRES_DB=keyserver \
+  -p 5432:5432 postgres
+
+# Or with Docker
+docker run --name keyserver-db --rm \
+  -e POSTGRES_PASSWORD=keyserver \
+  -e POSTGRES_USER=keyserver \
+  -e POSTGRES_DB=keyserver \
+  -p 5432:5432 postgres
 ----
+
+.Start the HKP endpoint in dev mode (hot-reload)
+[source,bash]
+----
+KEYSERVER_DB_PASSWORD=keyserver ./mvnw -pl web/openpgp-keyserver-protocol -am liberty:dev
+----
+
+The HKP endpoint is then available at `http://localhost:9080/pks/`.
+
+
+== Integration tests
+
+Integration tests start a real Open Liberty container and a real PostgreSQL container
+via https://testcontainers.com[Testcontainers].
+They are in the `integration-tests` module and are intentionally *not* run during a
+normal `./mvnw verify` build.
+
+=== Prerequisites
+
+Docker *or* Podman must be available.
+
+For *Podman (rootless)* — which is the preferred local runtime — the socket must be
+reachable before running tests:
+
+[source,bash]
+----
+systemctl --user start podman.socket
+export DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock
+----
+
+For *Docker*, the standard `/var/run/docker.sock` is used automatically; no extra setup
+is needed.
+
+NOTE: Ryuk is disabled globally via `integration-tests/src/test/resources/testcontainers.properties`
+(`ryuk.disabled=true`) because Ryuk requires root access that Podman rootless does not grant.
+Containers are cleaned up by the JUnit 5 extension after the test session ends.
+
+=== Running integration tests
+
+[source,bash]
+----
+# Build all modules first (WARs must exist before failsafe resolves them)
+./mvnw package -DskipTests
+
+# Run integration tests
+./mvnw verify -pl integration-tests -am -P run-its
+----
+
+NOTE: The Liberty image is pulled from the IBM Container Registry on first run
+(`icr.io/appcafe/open-liberty:kernel-slim-java25-openj9-ubi-minimal`).
+The first run may take several minutes while the image is downloaded and
+Liberty features are installed.
+
+=== Writing new integration tests
+
+Annotate a test class with `@KeyserverIntegrationTest` (from the `extension` package).
+The extension injects a `KeyserverAccess` parameter into test methods:
+
+[source,java]
+----
+@KeyserverIntegrationTest
+class MyIT {
+
+    @Test
+    void my_test(KeyserverAccess keyserver) {
+        // HKP endpoint
+        URI hkpBase = keyserver.pksBaseUri(); // http://host:port/pks
+
+        // REST/JSON endpoint
+        URI apiBase = keyserver.apiBaseUri(); // http://host:port/api
+
+        // Direct JDBC for seeding / verifying persistence
+        String jdbcUrl  = keyserver.jdbcUrl();
+        String dbUser   = keyserver.dbUser();
+        String dbPass   = keyserver.dbPassword();
+    }
+}
+----
+
+If the test class needs a specific database state, annotate it with `@DatabaseSeed`.
+The extension will execute the listed SQL files before the class and truncate the
+declared tables afterwards:
+
+[source,java]
+----
+@KeyserverIntegrationTest
+@DatabaseSeed(value = {"sql/some-keys.sql"}, truncateAfter = {"keys", "uids"})
+class LookupIT { ... }
+----
+
+Classes *without* `@DatabaseSeed` share the common PostgreSQL instance, which starts
+empty at the beginning of each test session.
+
+=== CI
+
+Integration tests run in a dedicated GitHub Actions workflow
+(`.github/workflows/integration-tests.yml`), separate from the standard PR build.
+They are triggered on `workflow_dispatch` or on pushes to `main` that touch
+integration-test or application code.
+The workflow uses Podman (available on `ubuntu-latest` runners) instead of Docker.
+
 
 == Upload size limits (`POST /pks/add`)
 
@@ -119,3 +251,4 @@ example.com {
     }
 }
 ----
+
