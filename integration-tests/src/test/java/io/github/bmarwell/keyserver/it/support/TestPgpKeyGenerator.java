@@ -59,12 +59,13 @@ public final class TestPgpKeyGenerator {
          * user-ID, which is required for the key to be accepted by the server.
          * An empty passphrase (char[0]) means the secret key is unencrypted — fine
          * for ephemeral test keys that are never persisted.
+         * SHA-256 is used for all digest operations (checksum, self-signature, encryption key).
          */
         PGPKeyRingGenerator ringGen = new PGPKeyRingGenerator(
                 PGPSignature.POSITIVE_CERTIFICATION,
                 pgpKeyPair,
                 userId,
-                digestCalcProvider.get(HashAlgorithmTags.SHA1),
+                digestCalcProvider.get(HashAlgorithmTags.SHA256),
                 null,
                 null,
                 new BcPGPContentSignerBuilder(PGPPublicKey.RSA_GENERAL, HashAlgorithmTags.SHA256),

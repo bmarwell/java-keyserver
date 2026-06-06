@@ -16,6 +16,8 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.extension.AfterAllCallback;
@@ -317,15 +319,39 @@ public class KeyserverContainerExtension implements BeforeAllCallback, AfterAllC
 
         @Override
         public void close() {
-            LOG.info("Stopping Liberty container...");
-            this.liberty.stop();
-            LOG.info("Stopping PostgreSQL container...");
-            this.postgres.stop();
-            LOG.info("Removing shared Docker network...");
+            // Best-effort shutdown: every resource is attempted even if a previous step throws.
+            // All exceptions are collected; the first is rethrown with the rest as suppressed.
+            List<Exception> errors = new ArrayList<>();
+
             try {
+                LOG.info("Stopping Liberty container...");
+                this.liberty.stop();
+            } catch (Exception ex) {
+                LOG.warn("Failed to stop Liberty container", ex);
+                errors.add(ex);
+            }
+
+            try {
+                LOG.info("Stopping PostgreSQL container...");
+                this.postgres.stop();
+            } catch (Exception ex) {
+                LOG.warn("Failed to stop PostgreSQL container", ex);
+                errors.add(ex);
+            }
+
+            try {
+                LOG.info("Removing shared Docker network...");
                 this.network.close();
             } catch (Exception ex) {
                 LOG.warn("Failed to close Docker network", ex);
+                errors.add(ex);
+            }
+
+            if (!errors.isEmpty()) {
+                RuntimeException first =
+                        new RuntimeException("One or more errors during container shutdown", errors.get(0));
+                errors.subList(1, errors.size()).forEach(first::addSuppressed);
+                throw first;
             }
         }
     }

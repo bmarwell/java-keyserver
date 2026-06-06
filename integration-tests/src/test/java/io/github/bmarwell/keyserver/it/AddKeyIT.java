@@ -20,6 +20,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.util.UUID;
 import org.bouncycastle.openpgp.PGPException;
 import org.junit.jupiter.api.Test;
 
@@ -29,35 +30,35 @@ import org.junit.jupiter.api.Test;
 /// consistency with the rest of the application — the same API will be used in
 /// future REST JSON endpoint tests.
 ///
-/// A fresh RSA-2048 OpenPGP key is generated at test runtime via
-/// {@link TestPgpKeyGenerator} — no static key file is checked into the repository.
+/// A fresh RSA-2048 OpenPGP key with a **unique email address per execution** is
+/// generated at test runtime via {@link TestPgpKeyGenerator} — no static key file
+/// is checked into the repository, and the unique email prevents row collisions in
+/// a shared database across repeated or parallel runs.
 ///
 /// Asserts:
 /// 1. The server responds with {@code 202 Accepted}.
-/// 2. A row appears in {@code verification_queue} for the generated email address.
+/// 2. **Exactly one** row appears in {@code verification_queue} for the generated email.
 ///
 /// This class does not declare {@link io.github.bmarwell.keyserver.it.extension.DatabaseSeed}
 /// because the shared PostgreSQL instance starts empty at the beginning of the test session
-/// and the test uses a generated key. Tests that need a pre-populated database or
-/// deterministic cleanup should annotate their class with {@code @DatabaseSeed}.
+/// and the unique email guarantees no overlap with other tests.
 @KeyserverIntegrationTest
 class AddKeyIT {
-
-    private static final String TEST_EMAIL = "it-generated@example.com";
-    private static final String TEST_USER_ID = "IT Generated Key <" + TEST_EMAIL + ">";
 
     @Test
     void add_key_returns_202_and_enqueues_verification_entry(KeyserverAccess keyserver)
             throws IOException, PGPException {
-        // given
-        String armoredKey = TestPgpKeyGenerator.generateArmoredPublicKey(TEST_USER_ID);
+        // given — unique email per execution prevents collisions in the shared DB
+        String testEmail = "it-" + UUID.randomUUID() + "@example.com";
+        String userId = "IT Generated Key <" + testEmail + ">";
+        String armoredKey = TestPgpKeyGenerator.generateArmoredPublicKey(userId);
 
-        // when — JAX-RS Client: consistent with the application's JAX-RS stack
-        try (Client client = ClientBuilder.newClient()) {
-            Response response = client.target(keyserver.pksBaseUri())
-                    .path("add")
-                    .request()
-                    .post(Entity.form(new Form("keytext", armoredKey)));
+        // when — JAX-RS Client consistent with the application stack; Response is AutoCloseable
+        try (Client client = ClientBuilder.newClient();
+                Response response = client.target(keyserver.pksBaseUri())
+                        .path("add")
+                        .request()
+                        .post(Entity.form(new Form("keytext", armoredKey)))) {
 
             // then — HTTP layer
             assertThat(response.getStatus())
@@ -65,11 +66,11 @@ class AddKeyIT {
                     .isEqualTo(202);
         }
 
-        // then — persistence layer: one row in verification_queue for the generated email
-        long queuedCount = countVerificationQueueEntriesFor(keyserver, TEST_EMAIL);
+        // then — persistence layer: exactly one row for this unique email
+        long queuedCount = countVerificationQueueEntriesFor(keyserver, testEmail);
         assertThat(queuedCount)
-                .as("verification_queue should contain one entry for %s", TEST_EMAIL)
-                .isGreaterThanOrEqualTo(1);
+                .as("verification_queue should contain exactly one entry for %s", testEmail)
+                .isEqualTo(1);
     }
 
     private static long countVerificationQueueEntriesFor(KeyserverAccess keyserver, String email) {
