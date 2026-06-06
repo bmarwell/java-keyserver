@@ -16,12 +16,15 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Duration;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.extension.AfterAllCallback;
 import org.junit.jupiter.api.extension.BeforeAllCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.extension.ExtensionContext.Namespace;
 import org.junit.jupiter.api.extension.ExtensionContext.Store;
+import org.junit.jupiter.api.extension.ParameterContext;
+import org.junit.jupiter.api.extension.ParameterResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.GenericContainer;
@@ -35,25 +38,23 @@ import org.testcontainers.images.builder.ImageFromDockerfile;
  * JUnit 5 extension that starts a shared PostgreSQL container and an Open Liberty container
  * for the duration of the entire test session.
  *
- * <p>Containers are created once per JVM (stored in the root extension context) and shut
- * down automatically when all tests finish, because {@link ContainerHolder} implements
+ * <p>Containers are created once per JVM (stored at the root extension-context level) and
+ * shut down automatically when all tests finish because {@link ContainerHolder} implements
  * {@link Store.CloseableResource}.
  *
- * <p>Usage in a test class:
- * <pre>{@code
- * @ExtendWith(KeyserverContainerExtension.class)
- * class MyIT {
- *     @Test
- *     void someTest() throws Exception {
- *         URI pksBase = KeyserverContainerExtension.pksBaseUri();
- *         // ...
- *     }
- * }
- * }</pre>
+ * <p>The extension implements {@link ParameterResolver}: any {@code @Test},
+ * {@code @BeforeEach}, or {@code @BeforeAll} method that declares a {@link KeyserverAccess}
+ * (or {@link KeyserverInstance}) parameter will receive the shared running instance.
  *
- * <p>For database seeding, additionally annotate the test class with {@link DatabaseSeed}.
+ * <p><b>Parallel test classes:</b> all classes in the same JVM share one set of containers.
+ * This avoids repeated Liberty startups (each takes ~2 minutes). Tests that require a clean
+ * database state should annotate their class with {@link DatabaseSeed}; the extension will
+ * execute the seed SQL before the class and truncate the declared tables afterwards.
+ *
+ * <p>This extension is normally activated via the {@link KeyserverIntegrationTest} meta-
+ * annotation rather than being referenced directly.
  */
-public class KeyserverContainerExtension implements BeforeAllCallback, AfterAllCallback {
+public class KeyserverContainerExtension implements BeforeAllCallback, AfterAllCallback, ParameterResolver {
 
     private static final Logger LOG = LoggerFactory.getLogger(KeyserverContainerExtension.class);
 
@@ -74,66 +75,41 @@ public class KeyserverContainerExtension implements BeforeAllCallback, AfterAllC
     private static final String PG_USER = "keyserver";
     private static final String PG_PASSWORD = "keyserver";
 
-    /**
-     * Shared holder populated once per JVM when the first test class is initialised.
-     * Volatile so subsequent test classes see the written reference.
-     */
-    private static volatile @Nullable ContainerHolder activeHolder;
-
     // -------------------------------------------------------------------------
-    // JUnit 5 callbacks
+    // JUnit 5 lifecycle callbacks
     // -------------------------------------------------------------------------
 
     @Override
     public void beforeAll(ExtensionContext context) {
-        // Obtain or create the shared holder stored at the root context level so it
-        // persists across all test classes in the JVM run.
+        // Obtain or create the shared holder at the root context so it is shared
+        // across all test classes in the JVM.
         ContainerHolder holder = context.getRoot()
                 .getStore(NS)
                 .getOrComputeIfAbsent(HOLDER_KEY, _key -> startContainers(), ContainerHolder.class);
-        activeHolder = holder;
 
-        // Apply @DatabaseSeed if present on the test class.
-        context.getTestClass()
-                .map(cls -> cls.getAnnotation(DatabaseSeed.class))
-                .ifPresent(seed -> applySeed(holder, seed));
+        // Apply @DatabaseSeed SQL if present on the test class.
+        findSeedAnnotation(context).ifPresent(seed -> applySeed(holder, seed));
     }
 
     @Override
     public void afterAll(ExtensionContext context) {
-        // Truncate tables declared by @DatabaseSeed so the next class starts clean.
-        context.getTestClass()
-                .map(cls -> cls.getAnnotation(DatabaseSeed.class))
-                .ifPresent(seed -> truncateTables(seed));
+        // Truncate tables declared in @DatabaseSeed so the next class starts clean.
+        findSeedAnnotation(context).ifPresent(seed -> truncateTables(requireHolder(context), seed));
     }
 
     // -------------------------------------------------------------------------
-    // Static accessors — convenient for test classes
+    // ParameterResolver — injects KeyserverAccess / KeyserverInstance into tests
     // -------------------------------------------------------------------------
 
-    /** Returns the base URI for HKP (PKS) endpoints, e.g. {@code http://localhost:9080/pks}. */
-    public static URI pksBaseUri() {
-        return URI.create(requireHolder().pksBaseUrl());
+    @Override
+    public boolean supportsParameter(ParameterContext parameterContext, ExtensionContext extensionContext) {
+        Class<?> type = parameterContext.getParameter().getType();
+        return type == KeyserverAccess.class || type == KeyserverInstance.class;
     }
 
-    /** Returns the base URI for the REST (JSON) endpoints, e.g. {@code http://localhost:9080/api}. */
-    public static URI apiBaseUri() {
-        return URI.create(requireHolder().apiBaseUrl());
-    }
-
-    /** Returns a JDBC URL for the test PostgreSQL instance. */
-    public static String jdbcUrl() {
-        return requireHolder().postgres().getJdbcUrl();
-    }
-
-    /** Returns the DB user name. */
-    public static String dbUser() {
-        return PG_USER;
-    }
-
-    /** Returns the DB password. */
-    public static String dbPassword() {
-        return PG_PASSWORD;
+    @Override
+    public Object resolveParameter(ParameterContext parameterContext, ExtensionContext extensionContext) {
+        return requireHolder(extensionContext).toKeyserverInstance();
     }
 
     // -------------------------------------------------------------------------
@@ -142,7 +118,7 @@ public class KeyserverContainerExtension implements BeforeAllCallback, AfterAllC
 
     @SuppressWarnings("resource") // resources are closed via ContainerHolder.close()
     private static ContainerHolder startContainers() {
-        LOG.info("Starting shared keyserver test containers…");
+        LOG.info("Starting shared keyserver test containers...");
 
         Network network = Network.newNetwork();
 
@@ -163,7 +139,7 @@ public class KeyserverContainerExtension implements BeforeAllCallback, AfterAllC
         String pksBaseUrl = "http://" + libertyHost + ":" + libertyPort + "/pks";
         String apiBaseUrl = "http://" + libertyHost + ":" + libertyPort + "/api";
 
-        LOG.info("PostgreSQL JDBC URL: {}", postgres.getJdbcUrl());
+        LOG.info("PostgreSQL JDBC URL : {}", postgres.getJdbcUrl());
         LOG.info("Liberty PKS base URL: {}", pksBaseUrl);
         LOG.info("Liberty REST base URL: {}", apiBaseUrl);
 
@@ -181,11 +157,11 @@ public class KeyserverContainerExtension implements BeforeAllCallback, AfterAllC
          * features.sh before copying the WARs (required for kernel-slim).
          *
          * Build order:
-         *   1. Copy server.xml → /config/server.xml
-         *   2. Run features.sh  → installs only the features declared in server.xml
-         *   3. Copy WARs        → /config/dropins/  (auto-deployed by Liberty)
-         *   4. Copy JDBC driver → /config/lib/global/postgresql.jar
-         *   5. Run configure.sh → final Liberty image prep step
+         *   1. Copy server.xml -> /config/server.xml
+         *   2. Run features.sh  -> installs only the features declared in server.xml
+         *   3. Copy WARs        -> /config/dropins/  (auto-deployed by Liberty)
+         *   4. Copy JDBC driver -> /config/lib/global/postgresql.jar
+         *   5. Run configure.sh -> final Liberty image prep step
          */
         String dockerfile = """
         FROM %s
@@ -235,11 +211,10 @@ public class KeyserverContainerExtension implements BeforeAllCallback, AfterAllC
         }
     }
 
-    private static void truncateTables(DatabaseSeed seed) {
+    private static void truncateTables(ContainerHolder holder, DatabaseSeed seed) {
         if (seed.truncateAfter().length == 0) {
             return;
         }
-        ContainerHolder holder = requireHolder();
         String tables = String.join(", ", seed.truncateAfter());
         String sql = "TRUNCATE TABLE " + tables + " CASCADE";
         try (Connection conn = DriverManager.getConnection(holder.postgres().getJdbcUrl(), PG_USER, PG_PASSWORD);
@@ -267,11 +242,16 @@ public class KeyserverContainerExtension implements BeforeAllCallback, AfterAllC
     // Internal helpers
     // -------------------------------------------------------------------------
 
-    private static ContainerHolder requireHolder() {
-        ContainerHolder holder = activeHolder;
+    private static Optional<DatabaseSeed> findSeedAnnotation(ExtensionContext context) {
+        return context.getTestClass().map(cls -> cls.getAnnotation(DatabaseSeed.class));
+    }
+
+    private static ContainerHolder requireHolder(ExtensionContext context) {
+        @Nullable ContainerHolder holder = context.getRoot().getStore(NS).get(HOLDER_KEY, ContainerHolder.class);
         if (holder == null) {
-            throw new IllegalStateException("KeyserverContainerExtension has not been initialised. "
-                    + "Make sure the test class is annotated with @ExtendWith(KeyserverContainerExtension.class).");
+            throw new IllegalStateException("KeyserverContainerExtension containers are not initialised. "
+                    + "Ensure beforeAll has run before resolving parameters. "
+                    + "Did you use @KeyserverIntegrationTest on the test class?");
         }
         return holder;
     }
@@ -279,7 +259,9 @@ public class KeyserverContainerExtension implements BeforeAllCallback, AfterAllC
     private static String requireSystemProperty(String key) {
         String value = System.getProperty(key);
         if (value == null || value.isBlank()) {
-            throw new IllegalStateException("Required system property '" + key + "' is not set. "
+            throw new IllegalStateException("Required system property '"
+                    + key
+                    + "' is not set. "
                     + "Run integration tests via: ./mvnw verify -pl integration-tests -am -P run-its");
         }
         return value;
@@ -290,18 +272,27 @@ public class KeyserverContainerExtension implements BeforeAllCallback, AfterAllC
     // -------------------------------------------------------------------------
 
     /**
-     * Holds the running containers and their derived URLs.  JUnit automatically calls
+     * Holds the running containers and their derived URLs. JUnit automatically calls
      * {@link #close()} after all tests in the root context finish.
      */
     record ContainerHolder(
             PostgreSQLContainer<?> postgres, GenericContainer<?> liberty, String pksBaseUrl, String apiBaseUrl)
             implements Store.CloseableResource {
 
+        KeyserverInstance toKeyserverInstance() {
+            return new KeyserverInstance(
+                    URI.create(this.pksBaseUrl()),
+                    URI.create(this.apiBaseUrl()),
+                    this.postgres().getJdbcUrl(),
+                    PG_USER,
+                    PG_PASSWORD);
+        }
+
         @Override
         public void close() {
-            LOG.info("Stopping Liberty container…");
+            LOG.info("Stopping Liberty container...");
             this.liberty.stop();
-            LOG.info("Stopping PostgreSQL container…");
+            LOG.info("Stopping PostgreSQL container...");
             this.postgres.stop();
         }
     }

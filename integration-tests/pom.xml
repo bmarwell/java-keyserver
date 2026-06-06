@@ -68,6 +68,21 @@
       <artifactId>logback-classic</artifactId>
       <scope>test</scope>
     </dependency>
+
+    <!--
+      BouncyCastle — used to generate PGP key rings programmatically in tests.
+      We use the pure Bc* API (no Jca*) so no JCE provider registration is needed.
+    -->
+    <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcprov-jdk18on</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcpg-jdk18on</artifactId>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>
