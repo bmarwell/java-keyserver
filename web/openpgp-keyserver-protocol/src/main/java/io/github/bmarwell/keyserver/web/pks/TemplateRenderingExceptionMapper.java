@@ -34,7 +34,7 @@ import java.util.logging.Logger;
 /// </ol>
 @Provider
 @Produces({MediaType.TEXT_HTML, MediaType.TEXT_PLAIN})
-class TemplateRenderingExceptionMapper implements ExceptionMapper<TemplateRenderingException> {
+public class TemplateRenderingExceptionMapper implements ExceptionMapper<TemplateRenderingException> {
 
     private static final Logger LOG = Logger.getLogger(TemplateRenderingExceptionMapper.class.getName());
 

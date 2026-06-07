@@ -179,7 +179,7 @@ Apache CXF (`cxf-rt-frontend-jaxrs`, test scope) provides JAX-RS type support.
 
 Every mutating command is wrapped in a BTX lifecycle:
 
-1. Generate a node-aware TSID (`TsidFactoryProducer` / injected `TSID.Factory`).
+1. Generate a node-aware TSID (`TsidFactoryProducer` / injected `TsidFactory`, which is a delegate of `TSID.Factory` for CDI injection).
 2. Write a `STARTED` row in `business_transactions` (`REQUIRES_NEW`).
 3. Store the `btxId` in `@RequestScoped BusinessTransactionContext` (no param threading needed).
 4. Run the handler inside a `REQUIRED` transaction.

@@ -13,17 +13,17 @@ import java.io.StringWriter;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
-/// Smoke-tests for {@link FreemarkerConfiguration}.
+/// Smoke-tests for {@link FreemarkerConfigurationProducer}.
 ///
 /// Verifies that the produced {@link Configuration} can load a template from the
 /// classpath and render it without errors, validating the template-loader and
 /// encoding setup without a CDI container.
-class FreemarkerConfigurationTest {
+class FreemarkerConfigurationProducerTest {
 
     @Test
     void configuration_loads_and_renders_smoke_template() throws Exception {
         // given
-        Configuration cfg = new FreemarkerConfiguration().freemarkerConfiguration();
+        FreemarkerConfiguration cfg = new FreemarkerConfigurationProducer().freemarkerConfiguration();
 
         // when
         Template template = cfg.getTemplate("smoke-test.ftlh");
@@ -37,7 +37,7 @@ class FreemarkerConfigurationTest {
     @Test
     void configuration_html_escapes_user_values() throws Exception {
         // given — the .ftlh extension triggers HTML auto-escaping
-        Configuration cfg = new FreemarkerConfiguration().freemarkerConfiguration();
+        FreemarkerConfiguration cfg = new FreemarkerConfigurationProducer().freemarkerConfiguration();
 
         // when
         Template template = cfg.getTemplate("smoke-test.ftlh");

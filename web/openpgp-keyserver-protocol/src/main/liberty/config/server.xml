@@ -1,7 +1,13 @@
 <server>
   <featureManager>
     <platform>jakartaee-11.0</platform>
+    <feature>servlet</feature>
+    <feature>cdi</feature>
+    <feature>persistence</feature>
+    <feature>restfulWS</feature>
+    <feature>jsonb</feature>
     <platform>microProfile-7.1</platform>
+    <feature>mpOpenAPI</feature>
     <feature>localconnector-1.0</feature>
   </featureManager>
 
@@ -16,10 +22,11 @@
   <variable name="db_user" value="${env.KEYSERVER_DB_USER}" />
   <variable name="db_password" value="${env.KEYSERVER_DB_PASSWORD}" />
 
+  <httpAccessLogging logFormat="%t &quot;%r&quot; %s %b" />
 
-  <!-- Derby Library Configuration -->
+  <!-- PostgreSQL Library Configuration -->
   <library id="pgsqldriver">
-    <fileset dir="${server.config.dir}/lib/global" includes="postgresql-*.jar" />
+    <fileset dir="${server.config.dir}/lib/global" includes="postgresql.jar" />
   </library>
 
   <!-- Datasource Configuration -->

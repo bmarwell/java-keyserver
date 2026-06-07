@@ -3,9 +3,10 @@
  *
  * SPDX-License-Identifier: EUPL-1.2 OR Apache-2.0
  */
-package io.github.bmarwell.keyserver.application.core.concurrent;
+package io.github.bmarwell.keyserver.tsid;
 
 import io.hypersistence.tsid.TSID;
+import io.hypersistence.tsid.TSID.Factory;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Produces;
 
@@ -35,9 +36,12 @@ public class TsidFactoryProducer {
 
     @Produces
     @ApplicationScoped
-    public TSID.Factory produceTsidFactory() {
-        int node = resolveNode();
-        return TSID.Factory.builder().withNodeBits(NODE_BITS).withNode(node).build();
+    public TsidFactory produceTsidFactory() {
+        final int node = resolveNode();
+        final TSID.Factory tsidFactory =
+                Factory.builder().withNodeBits(NODE_BITS).withNode(node).build();
+
+        return new TsidFactoryDelegate(tsidFactory);
     }
 
     private static int resolveNode() {
