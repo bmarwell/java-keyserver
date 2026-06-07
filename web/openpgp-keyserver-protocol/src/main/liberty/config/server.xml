@@ -22,7 +22,7 @@
   <variable name="db_user" value="${env.KEYSERVER_DB_USER}" />
   <variable name="db_password" value="${env.KEYSERVER_DB_PASSWORD}" />
 
-  <httpAccessLogging logFormat="%h %u %t &quot;%r&quot; %s %b" />
+  <httpAccessLogging logFormat="%t &quot;%r&quot; %s %b" />
 
   <!-- PostgreSQL Library Configuration -->
   <library id="pgsqldriver">
