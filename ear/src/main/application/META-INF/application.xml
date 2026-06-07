@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<application xmlns="https://jakarta.ee/xml/ns/jakartaee"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="https://jakarta.ee/xml/ns/jakartaee https://jakarta.ee/xml/ns/jakartaee/application_11.xsd"
+  version="11">
+  <display-name>Java Keyserver</display-name>
+
+  <module>
+    <web>
+      <web-uri>io.github.bmarwell.keyserver-keyserver-openpgp-keyserver-protocol-0.1.0-SNAPSHOT.war</web-uri>
+      <context-root>/pks</context-root>
+    </web>
+  </module>
+
+  <module>
+    <web>
+      <web-uri>io.github.bmarwell.keyserver-keyserver-web-rest-0.1.0-SNAPSHOT.war</web-uri>
+      <context-root>/api</context-root>
+    </web>
+  </module>
+</application>

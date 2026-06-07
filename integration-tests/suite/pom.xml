@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>io.github.bmarwell.keyserver</groupId>
+    <artifactId>keyserver-integration-tests</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>keyserver-integration-tests-suite</artifactId>
+  <name>Java Keyserver :: Integration Tests :: Suite</name>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.github.bmarwell.keyserver</groupId>
+      <artifactId>keyserver-ear</artifactId>
+      <version>0.1.0-SNAPSHOT</version>
+      <type>ear</type>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>io.github.bmarwell.keyserver</groupId>
+      <artifactId>keyserver-integration-tests-helper</artifactId>
+      <version>0.1.0-SNAPSHOT</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <!-- Skip surefire — no unit tests here -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <skipTests>true</skipTests>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>copy-ear</id>
+            <goals>
+              <goal>copy-dependencies</goal>
+            </goals>
+            <phase>pre-integration-test</phase>
+            <configuration>
+              <includeTypes>ear</includeTypes>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+  <profiles>
+    <!--
+          Activate with -P run-its to run integration tests.  Requires Docker or
+          Podman.  Not run by default to keep the standard PR build fast.
+        -->
+    <profile>
+      <id>run-its</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-failsafe-plugin</artifactId>
+            <configuration>
+              <systemPropertyVariables>
+                <!--
+                                  Absolute paths to the EAR and config files built by sibling modules.
+                                  Resolved at failsafe execution time after the "also-make" build.
+                                -->
+                <keyserver.deployable.path>${project.build.directory}/dependency/keyserver-ear-${project.version}.ear</keyserver.deployable.path>
+                <keyserver.server.xml.path>${project.basedir}/src/main/liberty/config/server.xml</keyserver.server.xml.path>
+                <keyserver.pgsql.jar.path>${project.build.directory}/libs/postgresql.jar</keyserver.pgsql.jar.path>
+              </systemPropertyVariables>
+            </configuration>
+            <executions>
+              <execution>
+                <goals>
+                  <goal>integration-test</goal>
+                  <goal>verify</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+
+</project>

@@ -8,177 +8,20 @@
     <version>0.1.0-SNAPSHOT</version>
   </parent>
 
-  <groupId>io.github.bmarwell.keyserver</groupId>
   <artifactId>keyserver-integration-tests</artifactId>
-  <version>0.1.0-SNAPSHOT</version>
+
+  <packaging>pom</packaging>
   <name>Java Keyserver :: Integration Tests</name>
 
-  <!--
-    Integration tests start a real Open Liberty container and a real PostgreSQL
-    container via Testcontainers.  They are excluded from the default `test`
-    lifecycle and only run during `verify` via the failsafe plugin when the
-    `run-its` profile is active.
-
-    Prerequisites:
-      - Docker or Podman must be available (see AGENTS.adoc §Integration Tests).
-      - For Podman (rootless): set DOCKER_HOST before running.
-        export DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock
-
-    To run locally:
-        ./mvnw verify -pl integration-tests -am -P run-its
-  -->
-
-  <dependencies>
-    <dependency>
-      <groupId>org.testcontainers</groupId>
-      <artifactId>testcontainers</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.testcontainers</groupId>
-      <artifactId>postgresql</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.testcontainers</groupId>
-      <artifactId>junit-jupiter</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.junit.jupiter</groupId>
-      <artifactId>junit-jupiter</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.assertj</groupId>
-      <artifactId>assertj-core</artifactId>
-      <scope>test</scope>
-    </dependency>
-
-    <!-- PostgreSQL JDBC driver — used for direct DB access in seed/verify steps -->
-    <dependency>
-      <groupId>org.postgresql</groupId>
-      <artifactId>postgresql</artifactId>
-      <scope>test</scope>
-    </dependency>
-
-    <!-- Logging backend for Testcontainers' Slf4jLogConsumer -->
-    <dependency>
-      <groupId>ch.qos.logback</groupId>
-      <artifactId>logback-classic</artifactId>
-      <scope>test</scope>
-    </dependency>
-
-    <!--
-      JAX-RS Client API — same API used throughout the application for consistency.
-      jakarta.ws.rs-api is managed as "provided" in the root pom (it is supplied by
-      the container at runtime). In the IT module we explicitly declare "test" scope
-      because there is no server container on the classpath here.
-    -->
-    <dependency>
-      <groupId>jakarta.ws.rs</groupId>
-      <artifactId>jakarta.ws.rs-api</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <!--
-      Apache CXF JAX-RS client implementation — test runtime only.
-      CXF 4.2.x targets Jakarta EE 11 (jakarta.ws.rs 4.0).
-      Using CXF here also matches Open Liberty's internal JAX-RS stack.
-    -->
-    <dependency>
-      <groupId>org.apache.cxf</groupId>
-      <artifactId>cxf-rt-rs-client</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.bouncycastle</groupId>
-      <artifactId>bcprov-jdk18on</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.bouncycastle</groupId>
-      <artifactId>bcpg-jdk18on</artifactId>
-      <scope>test</scope>
-    </dependency>
-  </dependencies>
-
-  <build>
-    <plugins>
-      <!-- Skip surefire — no unit tests here -->
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-surefire-plugin</artifactId>
-        <configuration>
-          <skipTests>true</skipTests>
-        </configuration>
-      </plugin>
-    </plugins>
-  </build>
+  <modules />
 
   <profiles>
-    <!--
-      Activate with -P run-its to run integration tests.  Requires Docker or
-      Podman.  Not run by default to keep the standard PR build fast.
-    -->
     <profile>
       <id>run-its</id>
-      <build>
-        <plugins>
-          <!--
-            Copy the PostgreSQL JDBC driver to a predictable path so the
-            container build can include it in the Liberty image.
-          -->
-          <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-dependency-plugin</artifactId>
-            <executions>
-              <execution>
-                <id>copy-pgsql-driver</id>
-                <goals>
-                  <goal>copy</goal>
-                </goals>
-                <phase>pre-integration-test</phase>
-                <configuration>
-                  <artifactItems>
-                    <artifactItem>
-                      <groupId>org.postgresql</groupId>
-                      <artifactId>postgresql</artifactId>
-                      <version>${postgresql.version}</version>
-                      <outputDirectory>${project.build.directory}/libs</outputDirectory>
-                      <destFileName>postgresql.jar</destFileName>
-                    </artifactItem>
-                  </artifactItems>
-                </configuration>
-              </execution>
-            </executions>
-          </plugin>
-
-          <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-failsafe-plugin</artifactId>
-            <configuration>
-              <systemPropertyVariables>
-                <!--
-                  Absolute paths to WARs and config files built by sibling modules.
-                  Resolved at failsafe execution time after the "also-make" build.
-                -->
-                <pks.war.path>${project.parent.basedir}/web/openpgp-keyserver-protocol/target/keyserver-openpgp-keyserver-protocol-${project.version}.war</pks.war.path>
-                <rest.war.path>${project.parent.basedir}/web/rest/target/keyserver-web-rest-${project.version}.war</rest.war.path>
-                <liberty.server.xml.path>${project.parent.basedir}/web/openpgp-keyserver-protocol/src/main/liberty/config/server.xml</liberty.server.xml.path>
-                <pgsql.jar.path>${project.build.directory}/libs/postgresql.jar</pgsql.jar.path>
-              </systemPropertyVariables>
-            </configuration>
-            <executions>
-              <execution>
-                <goals>
-                  <goal>integration-test</goal>
-                  <goal>verify</goal>
-                </goals>
-              </execution>
-            </executions>
-          </plugin>
-        </plugins>
-      </build>
+      <modules>
+        <module>helper</module>
+        <module>suite</module>
+      </modules>
     </profile>
   </profiles>
 

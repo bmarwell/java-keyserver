@@ -19,6 +19,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.extension.AfterAllCallback;
 import org.junit.jupiter.api.extension.BeforeAllCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
@@ -35,73 +36,30 @@ import org.testcontainers.containers.output.Slf4jLogConsumer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.images.builder.ImageFromDockerfile;
 
-/**
- * JUnit 5 extension that starts a shared PostgreSQL container and an Open Liberty container
- * for the duration of the entire test session.
- *
- * <p>Containers are created once per JVM (stored at the root extension-context level) and
- * shut down automatically when all tests finish because {@link ContainerHolder} implements
- * {@link Store.CloseableResource}.
- *
- * <p>The extension implements {@link ParameterResolver}: any {@code @Test},
- * {@code @BeforeEach}, or {@code @BeforeAll} method that declares a {@link KeyserverAccess}
- * (or {@link KeyserverInstance}) parameter will receive the shared running instance.
- *
- * <p><b>Parallel test classes:</b> all classes in the same JVM share one set of containers.
- * This avoids repeated Liberty startups (each takes ~2 minutes). Tests that require a clean
- * database state should annotate their class with {@link DatabaseSeed}; the extension will
- * execute the seed SQL before the class and truncate the declared tables afterwards.
- *
- * <p>This extension is normally activated via the {@link KeyserverIntegrationTest} meta-
- * annotation rather than being referenced directly.
- */
 public class KeyserverContainerExtension implements BeforeAllCallback, AfterAllCallback, ParameterResolver {
 
     private static final Logger LOG = LoggerFactory.getLogger(KeyserverContainerExtension.class);
-    private static final Logger WEBSPHERE_LIBERTY_LOGGER = LoggerFactory.getLogger("websphere_liberty");
-
     private static final Namespace NS = Namespace.create(KeyserverContainerExtension.class);
     private static final String HOLDER_KEY = "containers";
 
-    /** Liberty image pulled from IBM Container Registry. */
-    private static final String LIBERTY_BASE_IMAGE =
-            "icr.io/appcafe/open-liberty:kernel-slim-java25-openj9-ubi-minimal";
-
-    /** Liberty's application server ready log message (CWWKF0011I). */
-    private static final String LIBERTY_READY_LOG = ".*CWWKF0011I.*";
-
-    /** Postgres network alias — matches KEYSERVER_DB_SERVER env var fed to Liberty. */
     private static final String PG_NETWORK_ALIAS = "postgres";
-
     private static final String PG_DATABASE = "keyserver";
     private static final String PG_USER = "keyserver";
     private static final String PG_PASSWORD = "keyserver";
 
-    // -------------------------------------------------------------------------
-    // JUnit 5 lifecycle callbacks
-    // -------------------------------------------------------------------------
-
     @Override
     public void beforeAll(ExtensionContext context) {
-        // Obtain or create the shared holder at the root context so it is shared
-        // across all test classes in the JVM.
         ContainerHolder holder = context.getRoot()
                 .getStore(NS)
                 .getOrComputeIfAbsent(HOLDER_KEY, _key -> startContainers(), ContainerHolder.class);
 
-        // Apply @DatabaseSeed SQL if present on the test class.
         findSeedAnnotation(context).ifPresent(seed -> applySeed(holder, seed));
     }
 
     @Override
     public void afterAll(ExtensionContext context) {
-        // Truncate tables declared in @DatabaseSeed so the next class starts clean.
         findSeedAnnotation(context).ifPresent(seed -> truncateTables(requireHolder(context), seed));
     }
-
-    // -------------------------------------------------------------------------
-    // ParameterResolver — injects KeyserverAccess / KeyserverInstance into tests
-    // -------------------------------------------------------------------------
 
     @Override
     public boolean supportsParameter(ParameterContext parameterContext, ExtensionContext extensionContext) {
@@ -114,16 +72,10 @@ public class KeyserverContainerExtension implements BeforeAllCallback, AfterAllC
         return requireHolder(extensionContext).toKeyserverInstance();
     }
 
-    // -------------------------------------------------------------------------
-    // Container startup
-    // -------------------------------------------------------------------------
-
-    @SuppressWarnings("resource") // resources are closed via ContainerHolder.close()
+    @SuppressWarnings("resource")
     private static ContainerHolder startContainers() {
         LOG.info("Starting shared keyserver test containers...");
 
-        // Network is tracked in ContainerHolder so it is closed in close() even if
-        // Liberty startup throws after PostgreSQL has already started.
         Network network = Network.newNetwork();
         PostgreSQLContainer<?> postgres = null;
         GenericContainer<?> liberty = null;
@@ -134,13 +86,11 @@ public class KeyserverContainerExtension implements BeforeAllCallback, AfterAllC
                     .withDatabaseName(PG_DATABASE)
                     .withUsername(PG_USER)
                     .withPassword(PG_PASSWORD);
-
             postgres.start();
 
             liberty = buildLibertyContainer(network);
             liberty.start();
         } catch (RuntimeException ex) {
-            // Clean up anything that started before the failure.
             if (liberty != null) {
                 liberty.stop();
             }
@@ -168,37 +118,23 @@ public class KeyserverContainerExtension implements BeforeAllCallback, AfterAllC
     }
 
     private static GenericContainer<?> buildLibertyContainer(Network network) {
-        String pksWarPath = requireSystemProperty("pks.war.path");
-        String restWarPath = requireSystemProperty("rest.war.path");
-        String serverXmlPath = requireSystemProperty("liberty.server.xml.path");
-        String pgsqlJarPath = requireSystemProperty("pgsql.jar.path");
+        String deployablePath = requireSystemProperty("keyserver.deployable.path");
+        String serverXmlPath = requireSystemProperty("keyserver.server.xml.path");
+        String pgsqlJarPath = requireSystemProperty("keyserver.pgsql.jar.path");
 
-        /*
-         * Build a custom Liberty image using ImageFromDockerfile so we can run
-         * features.sh before copying the WARs (required for kernel-slim).
-         *
-         * Build order:
-         *   1. Copy server.xml -> /config/server.xml
-         *   2. Run features.sh  -> installs only the features declared in server.xml
-         *   3. Copy WARs        -> /config/dropins/  (auto-deployed by Liberty)
-         *   4. Copy JDBC driver -> /config/lib/global/postgresql.jar
-         *   5. Run configure.sh -> final Liberty image prep step
-         */
+        String deployableName = Path.of(deployablePath).getFileName().toString();
         String dockerfile = """
         FROM %s
         COPY --chown=1001:0 server.xml /config/server.xml
-        RUN features.sh
-        COPY --chown=1001:0 pks.war /config/dropins/pks.war
-        COPY --chown=1001:0 rest.war /config/dropins/rest.war
+        COPY --chown=1001:0 deployable /config/dropins/%s
         COPY --chown=1001:0 postgresql.jar /config/lib/global/postgresql.jar
         RUN configure.sh
-        """.formatted(LIBERTY_BASE_IMAGE);
+        """.formatted(KeyserverTestImage.LIBERTY_BASE_IMAGE, deployableName);
 
         ImageFromDockerfile image = new ImageFromDockerfile("keyserver-liberty-it", true)
                 .withFileFromString("Dockerfile", dockerfile)
                 .withFileFromPath("server.xml", Path.of(serverXmlPath))
-                .withFileFromPath("pks.war", Path.of(pksWarPath))
-                .withFileFromPath("rest.war", Path.of(restWarPath))
+                .withFileFromPath("deployable", Path.of(deployablePath))
                 .withFileFromPath("postgresql.jar", Path.of(pgsqlJarPath));
 
         return new GenericContainer<>(image)
@@ -208,13 +144,10 @@ public class KeyserverContainerExtension implements BeforeAllCallback, AfterAllC
                 .withEnv("KEYSERVER_DB_NAME", PG_DATABASE)
                 .withEnv("KEYSERVER_DB_USER", PG_USER)
                 .withEnv("KEYSERVER_DB_PASSWORD", PG_PASSWORD)
-                .waitingFor(Wait.forLogMessage(LIBERTY_READY_LOG, 1).withStartupTimeout(Duration.ofMinutes(3)))
-                .withLogConsumer(new Slf4jLogConsumer(WEBSPHERE_LIBERTY_LOGGER));
+                .waitingFor(Wait.forLogMessage(KeyserverTestImage.LIBERTY_READY_LOG, 1)
+                        .withStartupTimeout(Duration.ofMinutes(3)))
+                .withLogConsumer(new Slf4jLogConsumer(LoggerFactory.getLogger("liberty")));
     }
-
-    // -------------------------------------------------------------------------
-    // Database seeding helpers
-    // -------------------------------------------------------------------------
 
     private static void applySeed(ContainerHolder holder, DatabaseSeed seed) {
         if (seed.value().length == 0) {
@@ -259,16 +192,18 @@ public class KeyserverContainerExtension implements BeforeAllCallback, AfterAllC
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Internal helpers
-    // -------------------------------------------------------------------------
-
     private static Optional<DatabaseSeed> findSeedAnnotation(ExtensionContext context) {
         return context.getTestClass().map(cls -> cls.getAnnotation(DatabaseSeed.class));
     }
 
     private static ContainerHolder requireHolder(ExtensionContext context) {
-        return context.getRoot().getStore(NS).get(HOLDER_KEY, ContainerHolder.class);
+        @Nullable ContainerHolder holder = context.getRoot().getStore(NS).get(HOLDER_KEY, ContainerHolder.class);
+        if (holder == null) {
+            throw new IllegalStateException("KeyserverContainerExtension containers are not initialised. "
+                    + "Ensure beforeAll has run before resolving parameters. "
+                    + "Did you use @KeyserverIntegrationTest on the test class?");
+        }
+        return holder;
     }
 
     private static String requireSystemProperty(String key) {
@@ -282,18 +217,6 @@ public class KeyserverContainerExtension implements BeforeAllCallback, AfterAllC
         return value;
     }
 
-    // -------------------------------------------------------------------------
-    // Holder record — closed by JUnit after the last test in the session
-    // -------------------------------------------------------------------------
-
-    /**
-     * Holds the running containers and their derived URLs. JUnit automatically calls
-     * {@link #close()} after all tests in the root context finish.
-     *
-     * <p>The {@link Network} is stored here so it can be closed <em>after</em> both
-     * containers have stopped. With {@code ryuk.disabled=true} nothing else would
-     * remove the dangling network from the Docker/Podman daemon.
-     */
     record ContainerHolder(
             PostgreSQLContainer<?> postgres,
             GenericContainer<?> liberty,
@@ -313,8 +236,6 @@ public class KeyserverContainerExtension implements BeforeAllCallback, AfterAllC
 
         @Override
         public void close() {
-            // Best-effort shutdown: every resource is attempted even if a previous step throws.
-            // All exceptions are collected; the first is rethrown with the rest as suppressed.
             List<Exception> errors = new ArrayList<>();
 
             try {
