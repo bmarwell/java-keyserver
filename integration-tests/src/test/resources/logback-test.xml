@@ -8,7 +8,7 @@
   <!-- Reduce Testcontainers own chatter; keep Liberty container output at INFO -->
   <logger name="com.github.dockerjava" level="WARN"/>
   <logger name="org.testcontainers" level="INFO"/>
-  <logger name="websphere_liberty" level="debug"/>
+  <logger name="websphere_liberty" level="INFO"/>
 
   <root level="INFO">
     <appender-ref ref="STDOUT"/>
