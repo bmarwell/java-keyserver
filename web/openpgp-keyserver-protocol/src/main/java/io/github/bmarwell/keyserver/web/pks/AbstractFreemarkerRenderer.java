@@ -22,7 +22,7 @@ import java.util.Map;
 abstract class AbstractFreemarkerRenderer {
 
     @Inject
-    Configuration configuration;
+    FreemarkerConfiguration configuration;
 
     /// Loads and processes a Freemarker template, returning the rendered string.
     ///
@@ -46,7 +46,7 @@ abstract class AbstractFreemarkerRenderer {
 
     /// CDI-friendly setter; allows unit tests to inject a {@link Configuration} instance
     /// without spinning up a CDI container.
-    public void setConfiguration(Configuration configuration) {
+    public void setConfiguration(FreemarkerConfiguration configuration) {
         this.configuration = configuration;
     }
 }

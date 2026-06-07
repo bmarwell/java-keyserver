@@ -10,7 +10,7 @@ import io.github.bmarwell.keyserver.application.port.repository.VerificationQueu
 import io.github.bmarwell.keyserver.application.port.repository.VerificationQueueRepository.VerificationRequest;
 import io.github.bmarwell.keyserver.repository.entity.VerificationQueueEntity;
 import io.github.bmarwell.keyserver.repository.entity.VerificationQueueState;
-import io.hypersistence.tsid.TSID;
+import io.github.bmarwell.keyserver.tsid.TsidFactory;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Default;
 import jakarta.inject.Inject;
@@ -28,7 +28,7 @@ import java.util.Optional;
 public class JpaVerificationQueueRepository extends BaseRepository implements VerificationQueueRepository {
 
     @Inject
-    TSID.Factory tsidFactory;
+    TsidFactory tsidFactory;
 
     @Override
     @Transactional
@@ -76,7 +76,7 @@ public class JpaVerificationQueueRepository extends BaseRepository implements Ve
         }
     }
 
-    public void setTsidFactory(TSID.Factory tsidFactory) {
+    public void setTsidFactory(TsidFactory tsidFactory) {
         this.tsidFactory = tsidFactory;
     }
 }

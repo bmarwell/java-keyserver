@@ -10,7 +10,7 @@ import io.github.bmarwell.keyserver.application.api.commands.CommandCallerContex
 import io.github.bmarwell.keyserver.application.api.commands.KeyServerCommand;
 import io.github.bmarwell.keyserver.application.core.concurrent.BusinessTransactionContext;
 import io.github.bmarwell.keyserver.application.port.repository.BusinessTransactionRepository;
-import io.hypersistence.tsid.TSID;
+import io.github.bmarwell.keyserver.tsid.TsidFactory;
 import jakarta.enterprise.concurrent.Asynchronous;
 import jakarta.enterprise.concurrent.ManagedExecutorDefinition;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -67,7 +67,7 @@ public class KeyServerCommandService implements CommandService, Serializable {
     BusinessTransactionContext btxContext;
 
     @Inject
-    TSID.Factory tsidFactory;
+    TsidFactory tsidFactory;
 
     @Asynchronous(executor = "java:app/concurrent/KeyServerCommandExecutor")
     @Override
@@ -184,7 +184,7 @@ public class KeyServerCommandService implements CommandService, Serializable {
         this.btxContext = btxContext;
     }
 
-    public void setTsidFactory(TSID.Factory tsidFactory) {
+    public void setTsidFactory(TsidFactory tsidFactory) {
         this.tsidFactory = tsidFactory;
     }
 }

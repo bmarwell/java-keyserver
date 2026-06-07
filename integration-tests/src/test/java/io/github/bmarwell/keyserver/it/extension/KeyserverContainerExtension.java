@@ -19,7 +19,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.extension.AfterAllCallback;
 import org.junit.jupiter.api.extension.BeforeAllCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
@@ -59,6 +58,7 @@ import org.testcontainers.images.builder.ImageFromDockerfile;
 public class KeyserverContainerExtension implements BeforeAllCallback, AfterAllCallback, ParameterResolver {
 
     private static final Logger LOG = LoggerFactory.getLogger(KeyserverContainerExtension.class);
+    private static final Logger WEBSPHERE_LIBERTY_LOGGER = LoggerFactory.getLogger("websphere_liberty");
 
     private static final Namespace NS = Namespace.create(KeyserverContainerExtension.class);
     private static final String HOLDER_KEY = "containers";
@@ -209,7 +209,7 @@ public class KeyserverContainerExtension implements BeforeAllCallback, AfterAllC
                 .withEnv("KEYSERVER_DB_USER", PG_USER)
                 .withEnv("KEYSERVER_DB_PASSWORD", PG_PASSWORD)
                 .waitingFor(Wait.forLogMessage(LIBERTY_READY_LOG, 1).withStartupTimeout(Duration.ofMinutes(3)))
-                .withLogConsumer(new Slf4jLogConsumer(LoggerFactory.getLogger("liberty")));
+                .withLogConsumer(new Slf4jLogConsumer(WEBSPHERE_LIBERTY_LOGGER));
     }
 
     // -------------------------------------------------------------------------
@@ -268,13 +268,7 @@ public class KeyserverContainerExtension implements BeforeAllCallback, AfterAllC
     }
 
     private static ContainerHolder requireHolder(ExtensionContext context) {
-        @Nullable ContainerHolder holder = context.getRoot().getStore(NS).get(HOLDER_KEY, ContainerHolder.class);
-        if (holder == null) {
-            throw new IllegalStateException("KeyserverContainerExtension containers are not initialised. "
-                    + "Ensure beforeAll has run before resolving parameters. "
-                    + "Did you use @KeyserverIntegrationTest on the test class?");
-        }
-        return holder;
+        return context.getRoot().getStore(NS).get(HOLDER_KEY, ContainerHolder.class);
     }
 
     private static String requireSystemProperty(String key) {

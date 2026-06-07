@@ -14,11 +14,15 @@ import io.github.bmarwell.keyserver.application.core.cmdhandler.CommandHandler;
 import io.github.bmarwell.keyserver.application.core.concurrent.BusinessTransactionContext;
 import io.github.bmarwell.keyserver.application.port.repository.BusinessTransactionRepository;
 import io.github.bmarwell.keyserver.test.utils.cdi.SimpleInstance;
+import io.github.bmarwell.keyserver.tsid.TsidFactoryDelegate;
 import io.hypersistence.tsid.TSID;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 class KeyServerCommandServiceTest {
+
+    public static final TsidFactoryDelegate TSID_FACTORY = new TsidFactoryDelegate(
+            TSID.Factory.builder().withNodeBits(10).withNode(0).build());
 
     private record TestCommand() implements KeyServerCommand {}
 
@@ -38,8 +42,7 @@ class KeyServerCommandServiceTest {
         service.setDispatcher(dispatcher);
         service.setBtxRepository(trackingRepo);
         service.setBtxContext(btxContext);
-        service.setTsidFactory(
-                TSID.Factory.builder().withNodeBits(10).withNode(0).build());
+        service.setTsidFactory(TSID_FACTORY);
         return service;
     }
 

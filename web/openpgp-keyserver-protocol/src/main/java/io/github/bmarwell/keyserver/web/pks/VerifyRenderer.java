@@ -19,7 +19,7 @@ import java.util.Map;
 /// </ul>
 ///
 /// Templates are loaded from the classpath under {@code /templates/} using the Freemarker
-/// {@link freemarker.template.Configuration} produced by {@link FreemarkerConfiguration}.
+/// {@link freemarker.template.Configuration} produced by {@link FreemarkerConfigurationProducer}.
 /// All three templates use the {@code .ftlh} extension, which activates Freemarker's HTML
 /// auto-escaping so that user-supplied values (e.g. UID strings) cannot inject HTML.
 ///

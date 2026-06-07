@@ -5,12 +5,12 @@
  */
 package io.github.bmarwell.keyserver.repository;
 
-import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 
 public abstract class BaseRepository {
 
-    @Inject
+    @PersistenceContext
     private EntityManager entityManager;
 
     public BaseRepository() {}
