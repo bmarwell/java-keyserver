@@ -4,7 +4,7 @@
     <feature>servlet</feature>
     <feature>cdi</feature>
     <feature>persistence</feature>
-    <feature>restfulWs</feature>
+    <feature>restfulWS</feature>
     <feature>jsonb</feature>
     <platform>microProfile-7.1</platform>
     <feature>mpOpenAPI</feature>
