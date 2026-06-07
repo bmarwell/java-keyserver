@@ -22,7 +22,7 @@ class VerifyRendererTest {
     @BeforeEach
     void setUp() {
         this.renderer = new VerifyRenderer();
-        this.renderer.setConfiguration(new FreemarkerConfigurationProducer().freemarkerConfiguration());
+        this.renderer.setFreemarkerConfiguration(new FreemarkerConfigurationProducer().freemarkerConfiguration());
     }
 
     @Test

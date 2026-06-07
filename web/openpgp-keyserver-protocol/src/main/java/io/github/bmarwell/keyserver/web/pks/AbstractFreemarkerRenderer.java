@@ -22,7 +22,7 @@ import java.util.Map;
 abstract class AbstractFreemarkerRenderer {
 
     @Inject
-    FreemarkerConfiguration configuration;
+    FreemarkerConfiguration freemarkerConfiguration;
 
     /// Loads and processes a Freemarker template, returning the rendered string.
     ///
@@ -35,7 +35,7 @@ abstract class AbstractFreemarkerRenderer {
     ///         returns a 500 response
     protected String processTemplate(String templateName, Map<String, Object> model) {
         try {
-            Template template = this.configuration.getTemplate(templateName);
+            Template template = this.freemarkerConfiguration.getTemplate(templateName);
             StringWriter writer = new StringWriter();
             template.process(model, writer);
             return writer.toString();
@@ -44,9 +44,9 @@ abstract class AbstractFreemarkerRenderer {
         }
     }
 
-    /// CDI-friendly setter; allows unit tests to inject a {@link Configuration} instance
-    /// without spinning up a CDI container.
-    public void setConfiguration(FreemarkerConfiguration configuration) {
-        this.configuration = configuration;
+    /// CDI-friendly setter; allows unit tests to inject a {@link FreemarkerConfiguration} wrapper
+    /// for Freemarker's {@link Configuration} class.
+    public void setFreemarkerConfiguration(FreemarkerConfiguration configuration) {
+        this.freemarkerConfiguration = configuration;
     }
 }
