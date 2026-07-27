@@ -54,7 +54,7 @@
     <!-- plugin dependencies -->
     <palantir-java-format.version>2.91.0</palantir-java-format.version>
     <flyway.version>12.6.2</flyway.version>
-    <testcontainers.version>1.21.0</testcontainers.version>
+    <testcontainers.version>1.21.4</testcontainers.version>
     <postgresql.version>42.7.13</postgresql.version>
     <cxf.version>4.2.2</cxf.version>
   </properties>
