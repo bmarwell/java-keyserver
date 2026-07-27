@@ -46,7 +46,7 @@
     <!-- 3rd party dependencies -->
     <jspecify.version>1.0.0</jspecify.version>
     <immutables-value.version>2.10.0</immutables-value.version>
-    <bouncycastle.version>1.84</bouncycastle.version>
+    <bouncycastle.version>1.85</bouncycastle.version>
     <hypersistence-tsid.version>2.1.4</hypersistence-tsid.version>
     <freemarker.version>2.3.34</freemarker.version>
     <johnzon.version>2.1.0</johnzon.version>
