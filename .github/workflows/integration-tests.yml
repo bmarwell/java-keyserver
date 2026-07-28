@@ -27,7 +27,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4.4.0
+        uses: actions/checkout@v7.0.1
 
       # GitHub Actions runners ship Podman but the socket is not started by default.
       - name: Start Podman socket
