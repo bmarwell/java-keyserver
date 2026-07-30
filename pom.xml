@@ -44,7 +44,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
     <!-- 3rd party dependencies -->
-    <jspecify.version>1.0.0</jspecify.version>
+    <jspecify.version>1.0.1</jspecify.version>
     <immutables-value.version>2.10.0</immutables-value.version>
     <bouncycastle.version>1.85</bouncycastle.version>
     <hypersistence-tsid.version>2.1.4</hypersistence-tsid.version>
