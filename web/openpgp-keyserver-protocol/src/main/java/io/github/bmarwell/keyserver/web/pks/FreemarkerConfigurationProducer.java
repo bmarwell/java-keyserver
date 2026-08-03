@@ -6,8 +6,6 @@
 package io.github.bmarwell.keyserver.web.pks;
 
 import freemarker.cache.ClassTemplateLoader;
-import freemarker.core.HTMLOutputFormat;
-import freemarker.core.PlainTextOutputFormat;
 import freemarker.template.Configuration;
 import freemarker.template.TemplateExceptionHandler;
 import jakarta.enterprise.context.ApplicationScoped;

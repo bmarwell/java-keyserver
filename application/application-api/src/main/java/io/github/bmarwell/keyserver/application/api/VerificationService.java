@@ -5,9 +5,6 @@
  */
 package io.github.bmarwell.keyserver.application.api;
 
-import io.github.bmarwell.keyserver.application.api.ex.TokenExpiredException;
-import io.github.bmarwell.keyserver.application.api.ex.TokenInvalidException;
-
 /// Primary (inbound) port for synchronous UID verification.
 ///
 /// Implementations handle the full token-to-publication flow synchronously,

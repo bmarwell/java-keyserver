@@ -7,7 +7,6 @@ package io.github.bmarwell.keyserver.web.pks;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import freemarker.template.Configuration;
 import freemarker.template.Template;
 import java.io.StringWriter;
 import java.util.Map;

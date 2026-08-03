@@ -5,7 +5,6 @@
  */
 package io.github.bmarwell.keyserver.web.pks;
 
-import freemarker.template.Configuration;
 import freemarker.template.Template;
 import jakarta.inject.Inject;
 import java.io.StringWriter;

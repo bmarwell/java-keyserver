@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>io.github.bmarwell.keyserver</groupId>
+    <artifactId>keyserver-integration-tests</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>keyserver-integration-tests-helper</artifactId>
+  <name>Java Keyserver :: Integration Tests :: helper</name>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers</artifactId>
+      <scope>compile</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>compile</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter-api</artifactId>
+      <scope>compile</scope>
+    </dependency>
+
+    <!-- PostgreSQL JDBC driver — used for direct DB access in seed/verify steps -->
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+
+    <!-- Logging backend for Testcontainers' Slf4jLogConsumer -->
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+
+    <!-- JAX-RS Client API for the test runtime -->
+    <dependency>
+      <groupId>jakarta.ws.rs</groupId>
+      <artifactId>jakarta.ws.rs-api</artifactId>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.cxf</groupId>
+      <artifactId>cxf-rt-rs-client</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcprov-jdk18on</artifactId>
+      <scope>compile</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcpg-jdk18on</artifactId>
+      <scope>compile</scope>
+    </dependency>
+  </dependencies>
+
+  <profiles>
+    <!--
+          Activate with -P run-its to run integration tests.  Requires Docker or
+          Podman.  Not run by default to keep the standard PR build fast.
+        -->
+    <profile>
+      <id>run-its</id>
+      <build>
+        <plugins>
+          <!--
+                      Copy the PostgreSQL JDBC driver to a predictable path so the
+                      container build can include it in the Liberty image.
+                    -->
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-dependency-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>copy-pgsql-driver</id>
+                <goals>
+                  <goal>copy</goal>
+                </goals>
+                <phase>pre-integration-test</phase>
+                <configuration>
+                  <artifactItems>
+                    <artifactItem>
+                      <groupId>org.postgresql</groupId>
+                      <artifactId>postgresql</artifactId>
+                      <version>${postgresql.version}</version>
+                      <outputDirectory>${project.build.directory}/libs</outputDirectory>
+                      <destFileName>postgresql.jar</destFileName>
+                    </artifactItem>
+                  </artifactItems>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+
+</project>

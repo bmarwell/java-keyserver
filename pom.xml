@@ -34,6 +34,7 @@
     <module>repository</module>
     <module>mail</module>
     <module>web</module>
+    <module>ear</module>
     <module>integration-tests</module>
   </modules>
 
@@ -335,6 +336,12 @@
           <configuration>
             <failOnMissingWebXml>false</failOnMissingWebXml>
           </configuration>
+        </plugin>
+
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-ear-plugin</artifactId>
+          <version>3.4.0</version>
         </plugin>
 
         <!-- 3rd party -->

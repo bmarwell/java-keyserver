@@ -8,9 +8,7 @@
     <version>0.1.0-SNAPSHOT</version>
   </parent>
 
-  <groupId>io.github.bmarwell.keyserver</groupId>
   <artifactId>keyserver-openpgp-keyserver-protocol</artifactId>
-  <version>0.1.0-SNAPSHOT</version>
   <packaging>war</packaging>
 
   <name>Java Keyserver :: web :: OpenPGP Keyserver Protocol</name>
@@ -117,5 +115,47 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <profile>
+      <id>run-its</id>
+      <properties>
+        <keyserver.deployable.path />
+      </properties>
+      <dependencies>
+        <dependency>
+          <groupId>io.github.bmarwell.keyserver</groupId>
+          <artifactId>keyserver-integration-tests-helper</artifactId>
+          <version>0.1.0-SNAPSHOT</version>
+          <scope>test</scope>
+        </dependency>
+      </dependencies>
+
+      <build>
+        <plugins>
+
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>build-helper-maven-plugin</artifactId>
+            <version>3.6.1</version>
+            <executions>
+              <execution>
+                <id>add-test-source</id>
+                <goals>
+                  <goal>add-test-source</goal>
+                </goals>
+                <phase>generate-test-sources</phase>
+                <configuration>
+                  <sources>
+                    <source>src/it/java</source>
+                  </sources>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 
 </project>
