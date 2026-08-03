@@ -77,7 +77,7 @@
                                   Resolved at failsafe execution time after the "also-make" build.
                                 -->
                 <keyserver.deployable.path>${project.build.directory}/dependency/keyserver-ear-${project.version}.ear</keyserver.deployable.path>
-                <keyserver.server.xml.path>${project.basedir}/src/main/liberty/config/server.xml</keyserver.server.xml.path>
+                <keyserver.server.xml.path>${maven.multiModuleProjectDirectory}/web/openpgp-keyserver-protocol/src/main/liberty/config/server.xml</keyserver.server.xml.path>
                 <keyserver.pgsql.jar.path>${project.build.directory}/libs/postgresql.jar</keyserver.pgsql.jar.path>
               </systemPropertyVariables>
             </configuration>

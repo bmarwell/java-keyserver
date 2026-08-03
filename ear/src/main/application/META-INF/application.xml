@@ -7,14 +7,14 @@
 
   <module>
     <web>
-      <web-uri>io.github.bmarwell.keyserver-keyserver-openpgp-keyserver-protocol-0.1.0-SNAPSHOT.war</web-uri>
+      <web-uri>keyserver-openpgp-keyserver-protocol-0.1.0-SNAPSHOT.war</web-uri>
       <context-root>/pks</context-root>
     </web>
   </module>
 
   <module>
     <web>
-      <web-uri>io.github.bmarwell.keyserver-keyserver-web-rest-0.1.0-SNAPSHOT.war</web-uri>
+      <web-uri>keyserver-web-rest-0.1.0-SNAPSHOT.war</web-uri>
       <context-root>/api</context-root>
     </web>
   </module>
